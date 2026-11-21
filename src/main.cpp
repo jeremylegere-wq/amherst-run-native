@@ -1,9 +1,12 @@
-// Amherst Run (native) - phase 0 toolchain test: an SDL2 window with an OpenGL ES 3.0 context, the 320x180
-// picture scaled up with chunky pixels, and a box you drive around a test yard with a pad (or the keyboard).
-// It proves the build and the controls on every target before the real map arrives (amherst-run: docs/CPP_PORT_PLAN.md, phase 1).
+// Amherst Run (native): the real Amherst map (baked by amherst-run's tools/bake_native.py) drawn at 320x180 and
+// scaled up with chunky pixels, and a placeholder car you drive over it with a pad or the keyboard. The car follows
+// the ground and the overpass decks; the real arcade physics and collisions come next (docs: amherst-run
+// docs/CPP_PORT_PLAN.md, phase 1).
 //
-//   amherst-run                         play (pad: left stick steer, RT gas, LT brake/reverse, Back quits)
-//   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, exit (CI)
+//   amherst-run                                  play (pad: left stick steer, RT gas, LT brake/reverse, Back quits)
+//   amherst-run --map path/to/amherst.amr        another map file (default: assets/amherst.amr beside the game)
+//   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing DEG (0 east, 90 north)
+//   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 #include <SDL.h>
 
 #include <cmath>
@@ -16,7 +19,11 @@
 #include "core/math.h"
 #include "render/gl.h"
 #include "render/shader.h"
+#include "render/map_renderer.h"
+#include "render/palette.h"
 #include "render/target.h"
+#include "world/map_file.h"
+#include "world/world.h"
 
 #ifndef AMR_VERSION
 #define AMR_VERSION "dev"
@@ -27,102 +34,10 @@ namespace {
 constexpr int kInternalW = 320, kInternalH = 180;  // the Python game's game/config.py INTERNAL_W/H
 constexpr double kPhysicsHz = 60.0;                 // fixed timestep, as PHYSICS_HZ
 
-const char* kVertex = R"(#version 300 es
-layout(location = 0) in vec3 a_pos;
-layout(location = 1) in vec3 a_normal;
-uniform mat4 u_mvp;
-uniform mat4 u_model;
-out vec3 v_normal;
-out vec3 v_world;
-void main() {
-    vec4 w = u_model * vec4(a_pos, 1.0);
-    v_world = w.xyz;
-    v_normal = mat3(u_model) * a_normal;
-    gl_Position = u_mvp * vec4(a_pos, 1.0);
-}
-)";
-
-// Two-tone cel lighting and banded distance fog: a first taste of the street style (phase 4 adds ink outlines).
-const char* kFragment = R"(#version 300 es
-precision mediump float;
-in vec3 v_normal;
-in vec3 v_world;
-uniform vec3 u_eye;
-uniform vec3 u_color;
-uniform vec3 u_fog;
-uniform int u_checker;
-out vec4 o_color;
-void main() {
-    vec3 c = u_color;
-    if (u_checker == 1) {                       // the yard: 10 m squares so you can see yourself move
-        float k = mod(floor(v_world.x / 10.0) + floor(v_world.y / 10.0), 2.0);
-        c *= mix(1.0, 0.88, k);
-    }
-    float lit = dot(normalize(v_normal), normalize(vec3(0.45, -0.3, 0.85))) > 0.35 ? 1.0 : 0.62;
-    float dist = distance(v_world, u_eye);      // per pixel: big polygons (the ground) have far-away corners
-    float fog = floor(clamp((dist - 70.0) / 130.0, 0.0, 1.0) * 4.0) / 4.0;   // four bands, like the retro look
-    o_color = vec4(mix(c * lit, u_fog, fog), 1.0);
-}
-)";
-
-// A unit box (-0.5..0.5 in x and y, 0..1 in z): 6 faces, 4 vertices each (flat normals), position + normal.
-struct Mesh {
-    GLuint vao = 0, vbo = 0, ibo = 0;
-    GLsizei count = 0;
-};
-
-Mesh make_box() {
-    const float n[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-    float v[6 * 4 * 6];
-    unsigned short idx[6 * 6];
-    for (int f = 0; f < 6; ++f) {
-        // two axes across the face
-        float u[3] = {0, 0, 0}, w[3] = {0, 0, 0};
-        int ax = n[f][0] != 0 ? 0 : (n[f][1] != 0 ? 1 : 2);
-        u[(ax + 1) % 3] = 1;
-        w[(ax + 2) % 3] = 1;
-        const float su[4] = {-1, 1, 1, -1}, sw[4] = {-1, -1, 1, 1};
-        for (int k = 0; k < 4; ++k) {
-            float p[3];
-            for (int i = 0; i < 3; ++i) p[i] = 0.5f * (n[f][i] + su[k] * u[i] + sw[k] * w[i]);
-            p[2] += 0.5f;  // sit on the ground
-            float* o = &v[(f * 4 + k) * 6];
-            o[0] = p[0]; o[1] = p[1]; o[2] = p[2];
-            o[3] = n[f][0]; o[4] = n[f][1]; o[5] = n[f][2];
-        }
-        // counter-clockwise seen from outside (front faces); flip the corner order where the face would point in
-        const float* c0 = &v[(f * 4 + 0) * 6];
-        const float* c1 = &v[(f * 4 + 1) * 6];
-        const float* c2 = &v[(f * 4 + 2) * 6];
-        const amr::Vec3 tri = amr::cross({c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]},
-                                         {c2[0] - c0[0], c2[1] - c0[1], c2[2] - c0[2]});
-        const bool outward = amr::dot(tri, {n[f][0], n[f][1], n[f][2]}) > 0;
-        const unsigned short base = static_cast<unsigned short>(f * 4);
-        const unsigned short ccw[6] = {0, 1, 2, 0, 2, 3}, cw[6] = {0, 2, 1, 0, 3, 2};
-        for (int i = 0; i < 6; ++i) idx[f * 6 + i] = static_cast<unsigned short>(base + (outward ? ccw[i] : cw[i]));
-    }
-    Mesh m;
-    glGenVertexArrays(1, &m.vao);
-    glBindVertexArray(m.vao);
-    glGenBuffers(1, &m.vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof v, v, GL_STATIC_DRAW);
-    glGenBuffers(1, &m.ibo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof idx, idx, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
-    glBindVertexArray(0);
-    m.count = 36;
-    return m;
-}
-
 // A placeholder car: just enough to feel the pad. Phase 1 ports the real arcade physics (game/car.py).
 struct TestCar {
-    float x = 0, y = 0, heading = 0, speed = 0;
-    void step(const amr::Controls& c, float dt) {
+    float x = 0, y = 0, z = 0, heading = 0, speed = 0;
+    void step(const amr::Controls& c, float dt, const amr::World& w) {
         const float accel = 9.0f, brake = 14.0f, drag = 0.35f, max_rev = -6.0f;
         speed += c.throttle * accel * dt;
         speed -= c.brake * (speed > 0 ? brake : accel * 0.5f) * dt;
@@ -130,15 +45,39 @@ struct TestCar {
         if (speed < max_rev) speed = max_rev;
         float grip = std::fmin(1.0f, std::fabs(speed) / 6.0f);           // no turning on the spot
         heading -= c.steer * 1.9f * grip * dt * (speed >= 0 ? 1.0f : -1.0f);
-        x += std::cos(heading) * speed * dt;
-        y += std::sin(heading) * speed * dt;
+        const float nx = x + std::cos(heading) * speed * dt, ny = y + std::sin(heading) * speed * dt;
+        if (!w.in_bounds(nx, ny)) {  // the map edge stops you
+            speed = 0;
+            return;
+        }
+        x = nx;
+        y = ny;
+        z = w.height_at(x, y, z + 1.0f);  // on the ground, or on the deck you are driving on
     }
 };
 
 struct Args {
     int frames = -1;
-    std::string screenshot;
+    std::string screenshot, map;
+    bool at = false, has_heading = false;
+    float at_x = 0, at_y = 0, heading = 0;
 };
+
+std::string default_map() {
+    std::string base;
+    if (char* p = SDL_GetBasePath()) {
+        base = p;
+        SDL_free(p);
+    }
+    for (const char* rel : {"assets/amherst.amr", "../assets/amherst.amr"}) {
+        std::string path = base + rel;
+        if (SDL_RWops* f = SDL_RWFromFile(path.c_str(), "rb")) {
+            SDL_RWclose(f);
+            return path;
+        }
+    }
+    return "assets/amherst.amr";
+}
 
 bool parse(int argc, char** argv, Args& a) {
     for (int i = 1; i < argc; ++i) {
@@ -149,6 +88,14 @@ bool parse(int argc, char** argv, Args& a) {
             a.frames = std::atoi(argv[++i]);
         } else if (!std::strcmp(argv[i], "--screenshot") && i + 1 < argc) {
             a.screenshot = argv[++i];
+        } else if (!std::strcmp(argv[i], "--map") && i + 1 < argc) {
+            a.map = argv[++i];
+        } else if (!std::strcmp(argv[i], "--at") && i + 1 < argc) {
+            a.at = std::sscanf(argv[++i], "%f,%f", &a.at_x, &a.at_y) == 2;
+            if (!a.at) return false;
+        } else if (!std::strcmp(argv[i], "--heading") && i + 1 < argc) {
+            a.heading = static_cast<float>(std::atof(argv[++i]) * 3.14159265358979 / 180.0);  // degrees from east
+            a.has_heading = true;
         } else {
             std::fprintf(stderr, "unknown option: %s\n", argv[i]);
             return false;
@@ -186,23 +133,33 @@ int main(int argc, char** argv) {
     std::printf("Amherst Run (native) %s: %s\n", AMR_VERSION, reinterpret_cast<const char*>(glGetString(GL_VERSION)));
 
     std::string err;
-    GLuint prog = amr::make_program(kVertex, kFragment, err);
-    if (!prog) {
-        std::fprintf(stderr, "shader: %s\n", err.c_str());
+    amr::MapData map;
+    const std::string map_path = args.map.empty() ? default_map() : args.map;
+    const Uint64 t_load = SDL_GetPerformanceCounter();
+    if (!amr::load_map(map_path, map, err)) {
+        std::fprintf(stderr, "map: %s\n(bake it with amherst-run's tools/bake_native.py, or get it with "
+                             "tools/fetch_map.py)\n", err.c_str());
         return 1;
     }
-    const GLint u_mvp = glGetUniformLocation(prog, "u_mvp"), u_model = glGetUniformLocation(prog, "u_model");
-    const GLint u_eye = glGetUniformLocation(prog, "u_eye"), u_color = glGetUniformLocation(prog, "u_color");
-    const GLint u_fog = glGetUniformLocation(prog, "u_fog"), u_checker = glGetUniformLocation(prog, "u_checker");
+    amr::World world(std::move(map));
+    amr::MapRenderer renderer(world);
     amr::RenderTarget target(kInternalW, kInternalH);
-    if (!target.ok()) {
-        std::fprintf(stderr, "could not make the 320x180 render target\n");
+    if (!renderer.ok() || !target.ok()) {
+        std::fprintf(stderr, "could not set up the renderer\n");
         return 1;
     }
-    Mesh box = make_box();
+    std::printf("map %s: %zu roads, %zu buildings, %zu overpass decks (%s), loaded in %.2f s\n", map_path.c_str(),
+                world.map().roads.size(), world.map().buildings.size(), world.map().spans.size(),
+                world.map().source.c_str(),
+                (SDL_GetPerformanceCounter() - t_load) / static_cast<double>(SDL_GetPerformanceFrequency()));
     amr::Input input;
     TestCar car;
-    const amr::Vec3 sky{0.47f, 0.66f, 0.86f};
+    car.x = args.at ? args.at_x : world.map().spawn_x;
+    car.y = args.at ? args.at_y : world.map().spawn_y;
+    car.heading = args.has_heading ? args.heading : world.map().spawn_heading;
+    car.z = world.height_at(car.x, car.y, world.ground(car.x, car.y));
+    double frame_ms_total = 0, frame_ms_worst = 0;
+    long long tris_total = 0;
 
     Uint64 last = SDL_GetPerformanceCounter();
     const double freq = static_cast<double>(SDL_GetPerformanceFrequency());
@@ -214,53 +171,42 @@ int main(int argc, char** argv) {
         while (SDL_PollEvent(&e)) input.handle(e);
         amr::Controls c = input.poll();
         if (c.quit) break;
-        if (args.frames >= 0) c = amr::Controls{0.35f, 1.0f, 0.0f, false, false};   // drive itself (CI)
+        if (args.frames >= 0) c = amr::Controls{0.0f, 1.0f, 0.0f, false, false};    // drive itself, straight (CI)
 
         // fixed-timestep simulation; a frame-limited test run steps exactly one 30 fps frame each loop
         Uint64 now = SDL_GetPerformanceCounter();
         acc += args.frames >= 0 ? 1.0 / 30.0 : std::fmin(0.25, (now - last) / freq);
         last = now;
         while (acc >= 1.0 / kPhysicsHz) {
-            car.step(c, static_cast<float>(1.0 / kPhysicsHz));
+            car.step(c, static_cast<float>(1.0 / kPhysicsHz), world);
             acc -= 1.0 / kPhysicsHz;
         }
 
         // draw the small picture
+        const Uint64 t_frame = SDL_GetPerformanceCounter();
         target.bind();
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
-        glClearColor(sky.x, sky.y, sky.z, 1);
+        glClearColor(amr::palette::kFog[0] / 255.0f, amr::palette::kFog[1] / 255.0f, amr::palette::kFog[2] / 255.0f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        const amr::Vec3 eye{car.x - std::cos(car.heading) * 9.0f, car.y - std::sin(car.heading) * 9.0f, 3.6f};
-        const amr::Mat4 proj = amr::perspective(1.05f, static_cast<float>(kInternalW) / kInternalH, 0.5f, 400.0f);
-        const amr::Mat4 view = amr::look_at(eye, {car.x, car.y, 1.2f});
-        glUseProgram(prog);
-        glUniform3f(u_eye, eye.x, eye.y, eye.z);
-        glUniform3f(u_fog, sky.x, sky.y, sky.z);
-        glBindVertexArray(box.vao);
-        auto draw = [&](const amr::Mat4& model, amr::Vec3 col, int checker) {
-            const amr::Mat4 mvp = proj * view * model;
-            glUniformMatrix4fv(u_mvp, 1, GL_FALSE, mvp.m);
-            glUniformMatrix4fv(u_model, 1, GL_FALSE, model.m);
-            glUniform3f(u_color, col.x, col.y, col.z);
-            glUniform1i(u_checker, checker);
-            glDrawElements(GL_TRIANGLES, box.count, GL_UNSIGNED_SHORT, nullptr);
-        };
-        amr::Mat4 ground;                                    // a flat 1 km yard (a very wide, thin box)
-        ground.at(0, 0) = 1000; ground.at(1, 1) = 1000; ground.at(2, 2) = 0.1f; ground.at(2, 3) = -0.1f;
-        draw(ground, {0.33f, 0.62f, 0.30f}, 1);
-        for (int i = -5; i <= 5; ++i)                       // a ring of red-brick blocks to drive between
-            for (int j = -5; j <= 5; ++j) {
-                if ((i + j) % 3 != 0 || (i == 0 && j == 0)) continue;
-                amr::Mat4 m = amr::translate({i * 40.0f, j * 40.0f, 0});
-                m.at(0, 0) = 14; m.at(1, 1) = 10; m.at(2, 2) = 6.0f + static_cast<float>((i * 7 + j * 3) & 7);
-                draw(m, {0.70f, 0.33f, 0.27f}, 0);
-            }
-        amr::Mat4 body = amr::translate({car.x, car.y, 0.3f}) * amr::rotate_z(car.heading);
-        body.at(0, 0) *= 4.2f; body.at(1, 0) *= 4.2f;        // 4.2 x 1.9 x 1.3 m: the yellow SUV's size
+        amr::Camera cam;
+        const float back = 9.0f;
+        cam.eye = {car.x - std::cos(car.heading) * back, car.y - std::sin(car.heading) * back, car.z + 3.6f};
+        cam.eye.z = std::fmax(cam.eye.z, world.height_at(cam.eye.x, cam.eye.y, cam.eye.z) + 1.5f);  // never in a hill
+        cam.target = {car.x, car.y, car.z + 1.2f};
+        const amr::FrameStats st = renderer.draw(cam, static_cast<float>(kInternalW) / kInternalH);
+        amr::Mat4 body = amr::translate({car.x, car.y, car.z + 0.05f}) * amr::rotate_z(car.heading);
+        body.at(0, 0) *= 4.2f; body.at(1, 0) *= 4.2f;        // 4.2 x 1.9 x 1.6 m: the yellow SUV's size
         body.at(0, 1) *= 1.9f; body.at(1, 1) *= 1.9f;
-        body.at(2, 2) = 1.3f;
-        draw(body, {0.96f, 0.86f, 0.24f}, 0);
+        body.at(2, 2) = 1.6f;
+        renderer.draw_box(body, amr::palette::kCarYellow);
+        if (args.frames >= 0) {
+            glFinish();  // honest timing in test runs: wait for the GPU
+            const double ms = (SDL_GetPerformanceCounter() - t_frame) * 1000.0 / SDL_GetPerformanceFrequency();
+            if (frame > 0) {  // the first frame builds the chunks around the start
+                frame_ms_total += ms;
+                frame_ms_worst = std::fmax(frame_ms_worst, ms);
+            }
+            tris_total += st.triangles;
+        }
 
         int ww = 0, wh = 0;
         SDL_GL_GetDrawableSize(win, &ww, &wh);
@@ -270,9 +216,12 @@ int main(int argc, char** argv) {
         if (args.frames >= 0 && frame >= args.frames) running = false;
     }
     int code = 0;
+    if (args.frames > 1)
+        std::printf("frames: %d, draw avg %.2f ms, worst %.2f ms, %lld triangles a frame\n", frame, frame_ms_total / (frame - 1),
+                    frame_ms_worst, tris_total / frame);
     if (!args.screenshot.empty()) {
         if (target.save_bmp(args.screenshot)) {
-            std::printf("wrote %s (car at %.1f, %.1f)\n", args.screenshot.c_str(), car.x, car.y);
+            std::printf("wrote %s (car at %.1f, %.1f, %.1f)\n", args.screenshot.c_str(), car.x, car.y, car.z);
         } else {
             std::fprintf(stderr, "could not save %s: %s\n", args.screenshot.c_str(), SDL_GetError());
             code = 1;

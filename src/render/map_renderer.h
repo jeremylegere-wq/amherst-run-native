@@ -1,0 +1,60 @@
+// Draws the baked map: terrain, land use, parking lots, water, roads, overpass decks and buildings.
+// The map is cut into 200 m chunks; each chunk's meshes are built the first time it comes into view and kept.
+// A depth buffer does the hiding the Python renderer needed a painter's sort and hill clipping for.
+#pragma once
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+#include "core/math.h"
+#include "render/mesh.h"
+#include "world/world.h"
+
+namespace amr {
+
+struct Camera {
+    Vec3 eye, target;
+    float fovy = 0.88f;  // radians: the street style's 80 degree horizontal view at 16:9
+};
+
+struct FrameStats {
+    int chunks_drawn = 0, chunks_built = 0;
+    long long triangles = 0;
+};
+
+class MapRenderer {
+public:
+    explicit MapRenderer(const World& world);
+    ~MapRenderer();
+    bool ok() const { return program_ != 0; }
+    // Draw everything within view of the camera into the current framebuffer (viewport already set).
+    FrameStats draw(const Camera& cam, float aspect);
+    // Draw a box (the placeholder car) with the same lighting and fog; `model` maps the unit box.
+    void draw_box(const Mat4& model, const std::uint8_t rgb[3]);
+    static constexpr float kChunk = 200.0f;
+    static constexpr float kDrawDist = 260.0f;
+
+private:
+    struct Chunk {
+        Mesh ground;    // terrain
+        Mesh overlay;   // land use, lots, water, roads (drawn with a depth offset over the ground)
+        Mesh solid;     // buildings and overpass decks
+    };
+    struct Item {       // something that belongs to a chunk: (kind, index, sub-index)
+        int kind, index, sub;
+    };
+    long long key(int cx, int cy) const;
+    Chunk& chunk(int cx, int cy, FrameStats& stats);
+    void build(int cx, int cy, Chunk& out);
+    void bucket();
+
+    const World& world_;
+    unsigned program_ = 0;
+    int u_mvp_ = -1, u_eye_ = -1, u_fog_ = -1, u_fog_range_ = -1;
+    Mat4 vp_;
+    std::unordered_map<long long, std::unique_ptr<Chunk>> chunks_;
+    std::unordered_map<long long, std::vector<Item>> items_;  // what each chunk holds, sorted out at start
+    std::vector<float> water_level_;                          // per polygon: the level water lies at
+};
+
+}  // namespace amr

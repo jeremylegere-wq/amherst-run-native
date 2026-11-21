@@ -17,7 +17,11 @@ find_library(GLES3_LIB NAMES GLESv2 GLESv3 REQUIRED)
 add_library(amr_core STATIC
   src/core/input.cpp
   src/render/target.cpp
-  src/render/shader.cpp)
+  src/render/shader.cpp
+  src/render/mesh.cpp
+  src/render/map_renderer.cpp
+  src/world/map_file.cpp
+  src/world/world.cpp)
 target_include_directories(amr_core PUBLIC src)
 target_link_libraries(amr_core PUBLIC SDL2::SDL2 ${GLES3_LIB})
 if(MSVC)
@@ -34,3 +38,10 @@ enable_testing()
 add_executable(test_math tests/test_math.cpp)
 target_include_directories(test_math PRIVATE src)
 add_test(NAME math COMMAND test_math)
+
+add_executable(test_world tests/test_world.cpp)
+target_link_libraries(test_world PRIVATE amr_core)
+set(AMR_MAP "${CMAKE_SOURCE_DIR}/assets/amherst.amr" CACHE FILEPATH "baked map for the parity tests")
+set(AMR_GOLDEN "${CMAKE_SOURCE_DIR}/assets/golden" CACHE PATH "golden files from amherst-run tools/golden.py")
+add_test(NAME world COMMAND test_world "${AMR_MAP}" "${AMR_GOLDEN}/heights.csv")
+set_tests_properties(world PROPERTIES SKIP_RETURN_CODE 77)

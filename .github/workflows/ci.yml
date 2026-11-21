@@ -20,14 +20,20 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
-      - name: Unit tests
+      - name: Get the baked map named in MAP_VERSION (until an amherst-run release includes it, map steps skip)
+        id: map
+        run: |
+          if python3 tools/fetch_map.py; then echo "have=yes" >> "$GITHUB_OUTPUT"; else echo "have=no" >> "$GITHUB_OUTPUT"; fi
+      - name: Tests (the map parity test is skipped without the map)
         run: ctest --test-dir build --output-on-failure
       - name: Drive for 150 frames without a display (Mesa software OpenGL ES)
+        if: steps.map.outputs.have == 'yes'
         env:
           SDL_VIDEODRIVER: offscreen
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: ./build/amherst-run --frames 150 --screenshot frame.bmp
       - name: Keep the frame
+        if: steps.map.outputs.have == 'yes'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frame
