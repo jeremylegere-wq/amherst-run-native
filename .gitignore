@@ -1,0 +1,5 @@
+build*/
+.cache/
+assets/amherst.amr
+assets/golden/
+*.bmp
