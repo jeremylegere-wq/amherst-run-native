@@ -14,6 +14,7 @@
 #include "core/sound.h"
 #include "game/battle.h"
 #include "game/missions.h"
+#include "game/tagging.h"
 #include "render/car_mesh.h"
 #include "render/chase_camera.h"
 #include "render/building_detail.h"
@@ -46,6 +47,7 @@ struct Options {
     int weather = 0;            // render/weather.h kWeathers (F4 cycles them)
     bool touch = false;         // show the on-screen touch buttons from the start (the mouse works them on a desktop)
     bool low_quality = false;   // phones: a shorter draw distance, no see-through shadows (the pause menu switches)
+    bool tag_test = false;      // test runs: park and hold TAG (the screenshots of a tag being sprayed)
 };
 
 class App {
@@ -77,6 +79,7 @@ private:
     void draw_pause();
     void draw_touch();
     void draw_clock_hands();
+    void draw_tags();
     std::vector<ClockFace> clock_faces_;
     struct Cloud {  // a cartoon cloud: ellipses (dx, dy, rx, ry in pixels of the 224-line Python picture) at a bearing
         double az = 0, elev = 0;
@@ -104,6 +107,9 @@ private:
     std::unique_ptr<MissionManager> jobs_;
     std::unique_ptr<Battle> battle_;
     std::unique_ptr<Train> train_;
+    std::unique_ptr<Tagging> tagging_;                 // the full game's tag spots (game/tagging.h)
+    std::vector<std::unique_ptr<Mesh>> tag_meshes_;    // the player's tags, per spot, once sprayed
+    double spray_sound_t_ = 0;
     int battle_kind_ = 0;
     unsigned battle_seed_ = 1;
     std::vector<std::unique_ptr<Car>> cars_;  // the human players

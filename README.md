@@ -21,7 +21,9 @@ dormers, chimneys) on the five house types, shop fronts and sign bands downtown,
 cornices, steeples and the clock tower (the map's BDET chunk); the graffiti tags and the two downtown murals (DECO); rounder trees; the hand-placed parked cars; and the
 weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing); ink on every crease (a normal buffer),
 thicker outlines up close, cool-tinted cel shadows, small details that fade with distance, puffy cartoon clouds, a
-view that widens at speed, and the street style's sticker HUD (outlined italic text, slanted bars and chevrons). Phase 5 (phones): on-screen touch
+view that widens at speed, and the street style's sticker HUD (outlined italic text, slanted bars and chevrons). Tagging (this game's own): 40 spots on commercial walls around town, marked by spinning spray cans and on the
+minimap; pull up beside one and hold TAG (E, pad X, the touch TAG button) to spray your crew's tag for $25, but
+not with police watching. Phase 5 (phones): on-screen touch
 buttons (they appear at the first touch; `--touch` shows them on a desktop, worked by the mouse), taps in the menus,
 Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.
 

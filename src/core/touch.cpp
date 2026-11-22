@@ -14,6 +14,7 @@ Touch::Touch() {
         {"brake", "BRAKE", kW - m - 54 - 5 - 43, kH - m - 43, 43, 43, true},
         {"hand", "HAND", kW - m - 54 - 5 - 43, kH - m - 43 - 5 - 29, 43, 29, true},
         {"hop", "HOP", kW - m - 54 - 5 - 43, kH - m - 43 - 5 - 29 - 5 - 22, 43, 22, true},
+        {"tag", "TAG", kW - m - 54, kH - m - 79 - 5 - 22, 54, 22, true},
         {"pause", "PAUSE", m, 22, 34, 14, false},
     };
 }

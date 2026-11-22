@@ -156,6 +156,11 @@ void Minimap::draw(const Car& car, const std::vector<MapBlip>& blips, double tim
             static const std::uint8_t red[3] = {240, 40, 40}, blue[3] = {70, 110, 255};
             layer_.rect(ix - 2, iy - 2, 5, 5, kInkC);
             layer_.rect(ix - 1, iy - 1, 3, 3, flash ? red : blue);
+        } else if (b.kind == 4) {  // a tag spot: a small diamond in its colour
+            layer_.tri(sx, sy - 3, sx + 3, sy, sx - 3, sy, kInkC);
+            layer_.tri(sx - 3, sy, sx + 3, sy, sx, sy + 3, kInkC);
+            layer_.tri(sx, sy - 2, sx + 2, sy, sx - 2, sy, b.rgb);
+            layer_.tri(sx - 2, sy, sx + 2, sy, sx, sy + 2, b.rgb);
         } else if (b.kind == 3 || flash) {
             layer_.rect(ix - 3, iy - 3, 7, 7, kInkC);
             layer_.rect(ix - 2, iy - 2, 5, 5, b.rgb);

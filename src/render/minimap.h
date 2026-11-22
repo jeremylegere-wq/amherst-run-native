@@ -14,7 +14,7 @@ namespace amr {
 struct MapBlip {
     double x, y;
     std::uint8_t rgb[3];
-    int kind;  // 0 traffic, 1 police, 2 job target (sticks to the rim), 3 hub
+    int kind;  // 0 traffic, 1 police, 2 job target (sticks to the rim), 3 hub, 4 tag spot
 };
 
 class Minimap {

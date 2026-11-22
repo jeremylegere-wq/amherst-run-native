@@ -120,6 +120,7 @@ Controls Input::controls(int i, int players, bool battle) const {
         c.brake = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
         c.handbrake = k[SDL_SCANCODE_SPACE];
         c.bumper = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
+        c.tag = k[SDL_SCANCODE_E];
     } else if (i == 0) {
         c.steer = static_cast<float>(k[SDL_SCANCODE_D] - k[SDL_SCANCODE_A]);
         c.throttle = k[SDL_SCANCODE_W];
@@ -139,6 +140,7 @@ Controls Input::controls(int i, int players, bool battle) const {
         c.brake = c.brake || touch_.pressed("brake");
         c.handbrake = c.handbrake || touch_.pressed("hand");
         c.bumper = c.bumper || touch_.pressed("hop");
+        c.tag = c.tag || touch_.pressed("tag");
     }
     const int npads = static_cast<int>(pads_.size());
     const int kpads = std::min(npads, std::max(players, 1)), first = std::max(players, 1) - kpads;
@@ -162,6 +164,7 @@ Controls Input::controls(int i, int players, bool battle) const {
             continue;
         }
         c.handbrake = c.handbrake || btn(SDL_CONTROLLER_BUTTON_A);
+        if (players <= 1) c.tag = c.tag || btn(SDL_CONTROLLER_BUTTON_X);
         c.bumper = c.bumper || btn(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) || btn(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
     }
     return c;

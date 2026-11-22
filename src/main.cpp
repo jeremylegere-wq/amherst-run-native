@@ -86,6 +86,8 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
         } else if (!std::strcmp(s, "--weather") && more) {
             a.weather = amr::weather_index(argv[++i]);
             if (a.weather < 0) return false;
+        } else if (!std::strcmp(s, "--tag-test")) {
+            a.tag_test = true;
         } else if (!std::strcmp(s, "--touch")) {
             a.touch = true;
         } else if (!std::strcmp(s, "--quality") && more) {

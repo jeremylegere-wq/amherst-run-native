@@ -5,7 +5,7 @@ artifacts (`amherst-run-android-debug`). It holds the game and SDL2 for arm64, a
 map. Not yet tried on a device.
 
 Controls: touch the screen and the on-screen buttons appear (steer left / right with the left thumb; GAS, BRAKE,
-HAND and HOP with the right; PAUSE top left); tap a menu item to pick it. A Bluetooth or USB gamepad works too (the
+HAND, HOP and TAG with the right; PAUSE top left); tap a menu item to pick it. A Bluetooth or USB gamepad works too (the
 buttons hide while it is used). The phone's Back button pauses. Leaving the app pauses the game and its sound. On a
 slow phone pick QUALITY: LOW in the pause menu (170 m draw distance, no see-through shadows).
 

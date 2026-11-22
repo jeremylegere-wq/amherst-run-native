@@ -55,6 +55,8 @@ Sound::Sound() {
     sounds_["ricochet"] = pcm(tone(2200, 0.09, Sine, 0.22, -900, 0, 25));
     sounds_["pop"] = pcm(tone(180, 0.12, Square, 0.35, 0, 0.7, 30));
     sounds_["spin"] = pcm(tone(700, 0.6, Square, 0.18, -500, 0, 3));
+    sounds_["spray"] = pcm(tone(5200, 0.3, Sine, 0.16, -800, 0.97, 2));   // a can's hiss
+    sounds_["tagged"] = pcm(join({tone(784, 0.08, Square, 0.2, 0, 0, 6), tone(1175, 0.16, Square, 0.2, 0, 0, 5)}));
     sounds_["boost"] = pcm(tone(200, 0.5, Saw, 0.22, 600, 0, 3));
     sounds_["win"] = pcm(join({tone(523, 0.14, Square, 0.22, 0, 0, 4), tone(659, 0.14, Square, 0.22, 0, 0, 4),
                                tone(784, 0.14, Square, 0.22, 0, 0, 4), tone(1047, 0.14, Square, 0.22, 0, 0, 4)}));

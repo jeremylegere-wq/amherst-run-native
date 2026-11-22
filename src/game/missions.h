@@ -62,6 +62,10 @@ public:
     bool current_target(double& x, double& y) const;
     std::vector<Marker> markers() const;
     void abort();
+    void add_cash(int amount, const std::string& banner, Rgb8 colour) {  // pay for something else (a tag)
+        cash_ += amount;
+        say(banner, colour);
+    }
 
     // The pieces the parity test checks against the Python game:
     std::string address(double x, double y) const;           // real civic number within 45 m, else a made-up one

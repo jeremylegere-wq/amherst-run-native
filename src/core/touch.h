@@ -1,7 +1,8 @@
 // On-screen touch controls for phones and tablets (the Python game's game/touch.py): buttons laid out in the 320x180
 // picture, recomputed every frame from where the fingers are, so a thumb can slide from one button to the next.
 //
-//   left thumb: steer left / right        right thumb: GAS (tall), BRAKE, HAND (handbrake), HOP (hop + power slide)
+//   left thumb: steer left / right        right thumb: GAS (tall), BRAKE, HAND (handbrake), HOP (hop + power slide),
+//                                          TAG (hold to spray a tag)
 //   top left:   PAUSE                      in the menus a tap picks the item under it (App reads taps())
 //
 // They show once a finger has touched the screen (or with --touch) and hide again when a pad or key is used.
@@ -16,7 +17,7 @@
 namespace amr {
 
 struct TouchButton {
-    const char* name;   // "left", "right", "gas", "brake", "hand", "hop", "pause"
+    const char* name;   // "left", "right", "gas", "brake", "hand", "hop", "tag", "pause"
     const char* label;
     int x, y, w, h;     // in the 320x180 picture
     bool held;          // held to drive (false: a one-shot tap)

@@ -21,6 +21,7 @@ struct Controls {
     bool handbrake = false;
     bool bumper = false;      // hop / power slide
     bool fire = false;        // battle: use the item
+    bool tag = false;         // one player: hold to spray a tag (E, pad X, the touch TAG button)
 };
 
 // Presses this frame, for menus and pausing (from the keyboard or any pad).

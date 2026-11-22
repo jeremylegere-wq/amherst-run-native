@@ -37,6 +37,7 @@ add_library(amr_core STATIC
   src/sim/town.cpp
   src/sim/train.cpp
   src/game/missions.cpp
+  src/game/tagging.cpp
   src/game/items.cpp
   src/game/battle.cpp
   src/game/app.cpp)
@@ -96,3 +97,8 @@ add_test(NAME sound COMMAND test_sound)
 add_executable(test_touch tests/test_touch.cpp)
 target_link_libraries(test_touch PRIVATE amr_core)
 add_test(NAME touch COMMAND test_touch)
+
+add_executable(test_tagging tests/test_tagging.cpp)
+target_link_libraries(test_tagging PRIVATE amr_core)
+add_test(NAME tagging COMMAND test_tagging "${AMR_MAP}")
+set_tests_properties(tagging PROPERTIES SKIP_RETURN_CODE 77)

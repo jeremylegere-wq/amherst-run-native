@@ -1,5 +1,6 @@
 // Small synthesized sound effects (game/sfx.py), made in code at start-up (no sound files): the item roulette tick,
-// an item landing, a shot launching, a ricochet, a balloon pop, a spin-out, a boost and a win jingle.
+// an item landing, a shot launching, a ricochet, a balloon pop, a spin-out, a boost and a win jingle; and this
+// game's own spray-can hiss and tag jingle.
 // If audio cannot start (no sound device, a dummy driver in tests), every call quietly does nothing: the game never
 // depends on sound working.
 #pragma once
