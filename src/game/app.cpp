@@ -150,13 +150,13 @@ void App::start(int players, int battle) {
     if (players_ == 1 && !battle) {
         tagging_ = std::make_unique<Tagging>(world_);
         tag_meshes_.resize(tagging_->spots().size());
-        if (loaded_) {  // carry on: the saved cash and tags
+        if (loaded_) {  // carry on: the saved cash and walls
             jobs_->set_cash(save_.cash);
-            for (const auto& t : save_.tags) {
-                const int i = tagging_->mark_tagged(t.first, t.second);
-                if (i >= 0) tag_meshes_[i] = std::make_unique<Mesh>(tag_mesh(tagging_->spots()[i], static_cast<unsigned>(i) * 7919u + 3u));
-            }
+            if (save_.walls) tagging_->clear_owners();  // (an older save: the rivals keep their starting walls)
+            for (const auto& t : save_.tags) tagging_->set_owner(t.first, t.second, Crew::Player);
+            for (const auto& t : save_.rivals) tagging_->set_owner(t.first, t.second, Crew::Rival);
         }
+        for (int i = 0; i < static_cast<int>(tag_meshes_.size()); ++i) refresh_tag(i);
     }
     train_ = std::make_unique<Train>(world_.map(), 1, opt_.trains);
     if (opt_.train_in >= 0) train_->set_wait(opt_.train_in);
@@ -251,25 +251,34 @@ void App::step(double dt) {
         }
         if (i == 0 && tagging_ && town_->state() == TownState::Playing) {
             const double before = tagging_->progress();
-            const int done = tagging_->update(dt, car, tag);
+            const TagEvent ev = tagging_->update(dt, car, tag);
             spray_sound_t_ -= dt;
             if (tagging_->progress() > before && spray_sound_t_ <= 0) {  // the can hisses while it sprays
                 sound_.play("spray");
                 spray_sound_t_ = 0.28;
             }
-            if (done >= 0) {
-                const TagSpot& sp = tagging_->spots()[done];
-                tag_meshes_[done] = std::make_unique<Mesh>(tag_mesh(sp, static_cast<unsigned>(done) * 7919u + 3u));
+            if (ev.kind == TagEvent::Pass) {  // a piece grows
+                refresh_tag(ev.spot);
+                sound_.play("item");
+                jobs_->add_cash(0, "PIECE " + std::to_string(tagging_->spots()[ev.spot].passes) + "/" +
+                                       std::to_string(Tagging::kPieceSprays) + "  KEEP SPRAYING", Rgb8{252, 222, 48});
+            } else if (ev.kind == TagEvent::Done) {
+                const TagSpot& sp = tagging_->spots()[ev.spot];
+                refresh_tag(ev.spot);
                 sound_.play("tagged");
                 bool seen = false;  // police close by see it happen
                 for (const auto& o : town_->cars())
                     if (o->police && std::hypot(o->x - car.x, o->y - car.y) < 80.0) seen = true;
-                if (seen) town_->add_heat(0.6);
-                const int n = tagging_->tagged(), total = static_cast<int>(tagging_->spots().size());
-                const bool all = n == total;
-                jobs_->add_cash(Tagging::kPay, all ? "ALL TAGGED! THE TOWN IS YOURS" :
-                                seen ? "TAGGED! THE COPS SAW THAT" : "TAGGED! +$" + std::to_string(Tagging::kPay),
+                if (seen) town_->add_heat(sp.piece ? 1.0 : 0.6);
+                const std::string what = sp.piece ? "PIECE DONE!" : ev.was == Crew::Rival ? "COVERED THEIR TAG!" : "TAGGED!";
+                const bool all = tagging_->mine() == static_cast<int>(tagging_->spots().size());
+                jobs_->add_cash(ev.pay, all ? "EVERY WALL IS YOURS!" :
+                                seen ? what + " THE COPS SAW" : what + " +$" + std::to_string(ev.pay),
                                 seen ? Rgb8{255, 80, 80} : Rgb8{120, 240, 120});
+                write_save_now();
+            } else if (ev.kind == TagEvent::RivalStrike) {
+                refresh_tag(ev.spot);
+                jobs_->add_cash(0, "THE RIVALS WENT OVER ONE OF YOUR WALLS", Rgb8{255, 80, 80});
                 write_save_now();
             }
         }
@@ -708,9 +717,12 @@ void App::hud_single() {
     std::vector<MapBlip> blips;
     for (const auto& c : town.cars()) blips.push_back({c->x, c->y, {0, 0, 0}, c->police ? 1 : 0});
     for (const Marker& mk : jobs.markers()) blips.push_back({mk.x, mk.y, {mk.colour.r, mk.colour.g, mk.colour.b}, mk.hub ? 3 : 2});
-    if (tagging_)
+    if (tagging_)  // walls to take: yellow (blank), red (the rivals'), orange (a big piece)
         for (const TagSpot& sp : tagging_->spots())
-            if (!sp.tagged) blips.push_back({sp.x, sp.y, {255, 214, 40}, 4});
+            if (sp.owner != Crew::Player)
+                blips.push_back({sp.x, sp.y, {static_cast<std::uint8_t>(sp.owner == Crew::Rival ? 240 : 255),
+                                              static_cast<std::uint8_t>(sp.owner == Crew::Rival ? 50 : sp.piece ? 140 : 214),
+                                              static_cast<std::uint8_t>(sp.owner == Crew::Rival ? 50 : 40)}, 4});
     const int mx = kW - Minimap::kSize - 4, my = 4, mc = Minimap::kSize / 2;
     minimap_.draw(car, blips, town.time(), mx, my, kW, kH, target_.final_fbo());
     {
@@ -753,8 +765,9 @@ void App::hud_single() {
         if (frac > 0) hud_.slant(bx, by, std::max(2, static_cast<int>(bw * frac)), 8, 4, frac < 0.4 ? kYellow : frac < 0.7 ? kOrange : kRed);
     }
     hud_.text(6, 6, "$" + std::to_string(jobs.cash()), palette::kHudCash, 2);  // cash, in money green
-    if (tagging_) {  // the tags: how many of the town's spots are yours; the prompt and the can's bar near one
-        const std::string count = "TAGS " + std::to_string(tagging_->tagged()) + "/" + std::to_string(tagging_->spots().size());
+    static const std::uint8_t kRedTxt[3] = {255, 90, 80};
+    if (tagging_) {  // the walls: how many of the town's are yours; the prompt and the can's bar near one
+        const std::string count = "WALLS " + std::to_string(tagging_->mine()) + "/" + std::to_string(tagging_->spots().size());
         const int ty = touch ? 40 : 22;
         static const std::uint8_t kCan[3] = {214, 48, 140};
         hud_.rect(touch ? 46 : 6, ty - 1, 5, 8, kInk);  // a little spray can
@@ -771,8 +784,13 @@ void App::hud_single() {
                 hud_.slant(bx, by, std::max(2, static_cast<int>(bw * pr)), 8, 4, kCan);
                 hud_.text((kW - hud_.text_width("SPRAYING", 2)) / 2, by - 14, "SPRAYING", kYellow, 2);
             } else {
+                const TagSpot& sp = tagging_->spots()[tagging_->in_reach()];
                 const std::string msg = touch ? "HOLD TAG TO SPRAY" : "HOLD E OR X TO TAG";
+                const std::string sub = sp.piece ? "BIG PIECE: " + std::to_string(Tagging::kPieceSprays - sp.passes) + " SPRAYS LEFT  $" +
+                                                       std::to_string(Tagging::kPiecePay)
+                                      : sp.owner == Crew::Rival ? "RIVAL TAG: COVER IT FOR $" + std::to_string(Tagging::kCoverPay) : "";
                 hud_.text((kW - hud_.text_width(msg, 2)) / 2, by - 4, msg, kYellow, 2);
+                if (!sub.empty()) hud_.text((kW - hud_.text_width(sub)) / 2, by + 9, sub, sp.owner == Crew::Rival ? kRedTxt : kOrange);
             }
         }
     }
@@ -1024,30 +1042,42 @@ void App::draw_clock_hands() {
     }
 }
 
-// The tag spots: a spinning yellow marker over each one not yet sprayed (orange and quicker when in reach), and
-// the player's tags on the walls already done.
+// The walls: the tag on each (the player's, the rivals', a piece in progress), and a spinning spray can over each one
+// still to take: yellow for a blank wall, red for the rivals', orange for a big piece (brighter and quicker in reach).
 void App::draw_tags() {
     if (!tagging_) return;
     const Car& car = *cars_[0];
     const double t = town_ ? town_->time() : 0.0;
-    static const std::uint8_t kMark[3] = {255, 214, 40}, kNear[3] = {255, 150, 30};
+    static const std::uint8_t kBlank[3] = {255, 214, 40}, kRival[3] = {230, 50, 40}, kPiece[3] = {255, 140, 40},
+                              kNear[3] = {255, 255, 255}, kCap[3] = {250, 250, 250};
     const auto& spots = tagging_->spots();
     for (int i = 0; i < static_cast<int>(spots.size()); ++i) {
         const TagSpot& sp = spots[i];
-        if (sp.tagged) {
-            if (tag_meshes_[i]) renderer_.draw_mesh(*tag_meshes_[i], Mat4{});
-            continue;
-        }
-        if (std::hypot(sp.x - car.x, sp.y - car.y) > 180.0) continue;
+        if (tag_meshes_[i]) renderer_.draw_mesh(*tag_meshes_[i], Mat4{});
+        if (sp.owner == Crew::Player || std::hypot(sp.x - car.x, sp.y - car.y) > 180.0) continue;
         const bool reach = tagging_->in_reach() == i;
         const double spin = t * (reach ? 5.0 : 2.0), bob = 0.3 * std::sin(t * 3.0 + i);
         const double mx = sp.x + sp.nx * 1.2, my = sp.y + sp.ny * 1.2, mz = sp.base + std::min(sp.wall_h, 6.0) + 0.8 + bob;
-        // a spray can, turning: the body, its white cap and a dark nozzle
-        static const std::uint8_t kCap[3] = {250, 250, 250};
-        renderer_.draw_box(box_model(mx, my, mz, spin, 0.8, 0.8, 1.3f), reach ? kNear : kMark);
-        renderer_.draw_box(box_model(mx, my, mz + 1.3, spin, 0.56, 0.56, 0.32f), kCap);
-        renderer_.draw_box(box_model(mx + std::cos(spin) * 0.3, my + std::sin(spin) * 0.3, mz + 1.42, spin, 0.18, 0.16, 0.14f), kInk);
+        const double k = sp.piece ? 1.5 : 1.0;  // a big piece: a big can
+        const std::uint8_t* body = reach && static_cast<int>(t * 6) % 2 ? kNear : sp.piece ? kPiece : sp.owner == Crew::Rival ? kRival : kBlank;
+        renderer_.draw_box(box_model(mx, my, mz, spin, 0.8 * k, 0.8 * k, static_cast<float>(1.3 * k)), body);
+        renderer_.draw_box(box_model(mx, my, mz + 1.3 * k, spin, 0.56 * k, 0.56 * k, static_cast<float>(0.32 * k)), kCap);
+        renderer_.draw_box(box_model(mx + std::cos(spin) * 0.3 * k, my + std::sin(spin) * 0.3 * k, mz + 1.42 * k, spin,
+                                     0.18 * k, 0.16 * k, static_cast<float>(0.14 * k)), kInk);
     }
+}
+
+// Remake wall i's art from who holds it: the player's tag, the rivals', a piece part done, or nothing.
+void App::refresh_tag(int i) {
+    const TagSpot& sp = tagging_->spots()[i];
+    tag_meshes_[i].reset();
+    if (sp.owner == Crew::Player)
+        tag_meshes_[i] = std::make_unique<Mesh>(tag_mesh(sp, static_cast<unsigned>(i) * 7919u + 3u, Crew::Player));
+    else if (sp.passes > 0)  // a piece in progress (over whatever was there)
+        tag_meshes_[i] = std::make_unique<Mesh>(tag_mesh(sp, static_cast<unsigned>(i) * 7919u + 3u, Crew::Player,
+                                                         static_cast<double>(sp.passes) / Tagging::kPieceSprays));
+    else if (sp.owner == Crew::Rival)
+        tag_meshes_[i] = std::make_unique<Mesh>(tag_mesh(sp, static_cast<unsigned>(i) * 104729u + 11u, Crew::Rival));
 }
 
 // Keep the save up to date: the full game's cash and tags (from the game in progress; the last ones otherwise),
@@ -1057,8 +1087,12 @@ void App::write_save_now() {
     if (tagging_ && jobs_) {
         save_.cash = jobs_->cash();
         save_.tags.clear();
-        for (const TagSpot& sp : tagging_->spots())
-            if (sp.tagged) save_.tags.push_back({sp.x, sp.y});
+        save_.rivals.clear();
+        for (const TagSpot& sp : tagging_->spots()) {
+            if (sp.owner == Crew::Player) save_.tags.push_back({sp.x, sp.y});
+            if (sp.owner == Crew::Rival) save_.rivals.push_back({sp.x, sp.y});
+        }
+        save_.walls = true;
     }
     save_.weather = weather_index(renderer_.weather().name);
     save_.low_quality = renderer_.low_quality();

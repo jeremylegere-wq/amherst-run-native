@@ -11,7 +11,9 @@ namespace amr {
 
 struct SaveData {
     int cash = 0;
-    std::vector<std::pair<double, double>> tags;  // tagged spots' positions
+    std::vector<std::pair<double, double>> tags;    // the player's walls (positions)
+    std::vector<std::pair<double, double>> rivals;  // the rival crew's walls
+    bool walls = false;                             // both lists were saved (older saves only kept the player's)
     int weather = 0;
     bool low_quality = false;
     bool music = true;

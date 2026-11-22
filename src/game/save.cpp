@@ -36,9 +36,10 @@ bool load_save(const std::string& path, SaveData& out) {
         else if (key == "weather") l >> d.weather;
         else if (key == "quality") { std::string q; l >> q; d.low_quality = q == "low"; }
         else if (key == "music") { std::string q; l >> q; d.music = q != "off"; }
-        else if (key == "tag") {
+        else if (key == "walls") d.walls = true;
+        else if (key == "tag" || key == "rival") {
             double x, y;
-            if (l >> x >> y) d.tags.push_back({x, y});
+            if (l >> x >> y) (key == "tag" ? d.tags : d.rivals).push_back({x, y});
         }
     }
     out = d;
@@ -53,9 +54,14 @@ bool write_save(const std::string& path, const SaveData& d) {
     o << "weather " << d.weather << "\n";
     o << "quality " << (d.low_quality ? "low" : "high") << "\n";
     o << "music " << (d.music ? "on" : "off") << "\n";
+    if (d.walls) o << "walls 1\n";
     char line[64];
     for (const auto& t : d.tags) {
         std::snprintf(line, sizeof line, "tag %.2f %.2f\n", t.first, t.second);
+        o << line;
+    }
+    for (const auto& t : d.rivals) {
+        std::snprintf(line, sizeof line, "rival %.2f %.2f\n", t.first, t.second);
         o << line;
     }
     const std::string text = o.str(), tmp = path + ".tmp";

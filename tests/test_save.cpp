@@ -24,11 +24,14 @@ int main(int argc, char** argv) {
     d.weather = 3;
     d.low_quality = true;
     d.tags = {{412.25, -903.5}, {-17.0, 1250.75}};
+    d.rivals = {{88.5, -44.25}};
+    d.walls = true;
     check(amr::write_save(path, d), "a save is written");
     amr::SaveData e;
     check(amr::load_save(path, e), "... and read back");
     check(e.cash == 375 && e.weather == 3 && e.low_quality && e.tags.size() == 2 && e.tags[0].first == 412.25 &&
-              e.tags[1].second == 1250.75, "with the same cash, weather, quality and tags");
+              e.tags[1].second == 1250.75 && e.walls && e.rivals.size() == 1 && e.rivals[0].first == 88.5,
+          "with the same cash, weather, quality, the player's walls and the rivals'");
     d.cash = 400;
     check(amr::write_save(path, d) && amr::load_save(path, e) && e.cash == 400, "saving again replaces it");
     std::rename(path.c_str(), (path + ".tmp").c_str());

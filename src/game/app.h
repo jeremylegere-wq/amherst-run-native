@@ -85,6 +85,7 @@ private:
     void draw_touch();
     void draw_clock_hands();
     void draw_tags();
+    void refresh_tag(int i);  // remake wall i's art from who holds it
     std::vector<ClockFace> clock_faces_;
     struct Cloud {  // a cartoon cloud: ellipses (dx, dy, rx, ry in pixels of the 224-line Python picture) at a bearing
         double az = 0, elev = 0;
