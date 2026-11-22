@@ -37,7 +37,7 @@ rebuilt in C++17 with SDL2 and OpenGL ES 3 so it can run as homebrew on an Xbox 
 
 ## Highlights
 
-| | |
+| Feature | Details |
 |---|---|
 | **The real town** | 1,735 roads, 6,600 buildings with real heights from LiDAR, 455,000 trees, the rail line, hills and overpasses, baked from OpenStreetMap and Nova Scotia open data. |
 | **Arcade driving** | Grip, handbrake turns, hops, power slides and drift boosts. The physics match the Python game to under 2 mm on its recorded test drives. |
