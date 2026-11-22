@@ -18,7 +18,7 @@ the street style's sky, clouds and distant hills, cartoon cars, road paint, kerb
 outlines, see-through shadows, the landmark props (the border lighthouse, the cenotaph, the dam, the horse), and the
 minimap with the street-name and speed-limit signs.
 Not yet: the cars' real shapes, landmarks,
-the street style's detail. The Xbox and Android builds (phase 0) are still to do.
+the street style's detail. CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.
 
 | Target | Status |
 |---|---|
