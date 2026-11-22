@@ -16,6 +16,7 @@ foreach(v SDL_DIR SDL_LIB_DIR ANGLE_DIR MAP_FILE)
   if(NOT ${v})
     message(FATAL_ERROR "set -D${v}=...")
   endif()
+  file(TO_CMAKE_PATH "${${v}}" ${v})   # forward slashes (Windows paths break CMake's source properties)
 endforeach()
 set(AMR_VERSION "0.1.0-xbox" CACHE STRING "version shown by the game")
 
