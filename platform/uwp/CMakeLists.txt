@@ -43,3 +43,6 @@ target_compile_definitions(AmherstRun PRIVATE AMR_VERSION="${AMR_VERSION}" _CRT_
                            GL_GLEXT_PROTOTYPES)
 target_compile_options(AmherstRun PRIVATE /W3 /EHsc)
 target_link_libraries(AmherstRun PRIVATE ${SDL_LIB_DIR}/SDL2.lib ${ANGLE_BIN}/libGLESv2.lib ${ANGLE_BIN}/libEGL.lib)
+# only SDL's entry point is C++/CX, so the C++/CX runtime has to be named before the C runtime by hand
+target_link_options(AmherstRun PRIVATE /NODEFAULTLIB:vccorlib.lib /NODEFAULTLIB:msvcrt.lib)
+target_link_libraries(AmherstRun PRIVATE vccorlib.lib msvcrt.lib)
