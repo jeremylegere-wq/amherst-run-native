@@ -73,9 +73,11 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/ndk" || true
           ls "$ANDROID_HOME/cmake" || true
-      - name: Build the APK
+      - name: Build the APK (with the runner's Java 17: the Android build tools want it)
         working-directory: platform/android
         run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
           NDK=$(basename "$ANDROID_NDK_LATEST_HOME")
           CMAKE=$(ls "$ANDROID_HOME/cmake" | sort -V | tail -1)
           echo "NDK $NDK, CMake $CMAKE"
