@@ -91,10 +91,23 @@ Actions Input::actions() {
     return a;
 }
 
-Controls Input::controls(int i, int players) const {
+Controls Input::controls(int i, int players, bool battle) const {
     Controls c;
     const Uint8* k = SDL_GetKeyboardState(nullptr);
-    if (players <= 1) {  // one player: either key set
+    if (battle && i == 0) {
+        c.steer = static_cast<float>(k[SDL_SCANCODE_D] - k[SDL_SCANCODE_A]);
+        c.throttle = k[SDL_SCANCODE_W];
+        c.brake = k[SDL_SCANCODE_S];
+        c.bumper = k[SDL_SCANCODE_SPACE];
+        c.fire = k[SDL_SCANCODE_E] || k[SDL_SCANCODE_LSHIFT];
+    } else if (battle && i == 1) {
+        c.steer = static_cast<float>(k[SDL_SCANCODE_RIGHT] - k[SDL_SCANCODE_LEFT]);
+        c.throttle = k[SDL_SCANCODE_UP];
+        c.brake = k[SDL_SCANCODE_DOWN];
+        c.bumper = k[SDL_SCANCODE_RSHIFT] || k[SDL_SCANCODE_RETURN] || k[SDL_SCANCODE_KP_ENTER];
+        c.fire = k[SDL_SCANCODE_SLASH] || k[SDL_SCANCODE_RCTRL];
+    } else if (battle) {
+    } else if (players <= 1) {  // one player: either key set
         c.steer = static_cast<float>((k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D]) - (k[SDL_SCANCODE_LEFT] || k[SDL_SCANCODE_A]));
         c.throttle = k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W];
         c.brake = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
@@ -128,6 +141,12 @@ Controls Input::controls(int i, int players) const {
         if (c.steer == 0.0f) c.steer = ax;
         c.throttle = c.throttle || ay < 0 || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 9830;
         c.brake = c.brake || ay > 0 || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 9830;
+        if (battle) {
+            c.bumper = c.bumper || btn(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) || btn(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) ||
+                       btn(SDL_CONTROLLER_BUTTON_A);
+            c.fire = c.fire || btn(SDL_CONTROLLER_BUTTON_X) || btn(SDL_CONTROLLER_BUTTON_B);
+            continue;
+        }
         c.handbrake = c.handbrake || btn(SDL_CONTROLLER_BUTTON_A);
         c.bumper = c.bumper || btn(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) || btn(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
     }

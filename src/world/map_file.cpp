@@ -226,6 +226,12 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             t.x = r.get<double>(); t.y = r.get<double>();
             t.label = r.str();
         }
+    } else if (tag == "SPRT") {
+        m.sprint_targets.resize(r.count(20));
+        for (auto& t : m.sprint_targets) {
+            t.x = r.get<double>(); t.y = r.get<double>();
+            t.label = r.str();
+        }
     } else if (tag == "ADDR") {
         m.addresses.resize(r.count(16));
         for (auto& a : m.addresses) {

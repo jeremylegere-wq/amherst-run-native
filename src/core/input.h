@@ -17,6 +17,7 @@ struct Controls {
     bool brake = false;       // also reverse
     bool handbrake = false;
     bool bumper = false;      // hop / power slide
+    bool fire = false;        // battle: use the item
 };
 
 // Presses this frame, for menus and pausing (from the keyboard or any pad).
@@ -41,7 +42,9 @@ public:
     // Player i's controls when `players` are playing. One player: the keyboard (arrows or WASD) and every pad.
     // More: player 1 drives with WASD + Space + Left Shift, player 2 with the arrows + Right Ctrl / Keypad 0 + Right
     // Shift, and pads go to the LAST players first (one pad and two players: the pad drives player 2).
-    Controls controls(int i, int players) const;
+    // Battle (game/battle.py): player 1 hops with Space and fires with E / Left Shift, player 2 hops with Right Shift
+    // / Enter and fires with / or Right Ctrl; on a pad A or LB/RB hop and X or B fire. No handbrake.
+    Controls controls(int i, int players, bool battle = false) const;
     int pads() const { return static_cast<int>(pads_.size()); }
     void set_players(int n) { players_ = n; }  // how many are playing (whose pad's Y respawns whom)
 

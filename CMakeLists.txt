@@ -30,6 +30,8 @@ add_library(amr_core STATIC
   src/sim/junctions.cpp
   src/sim/town.cpp
   src/game/missions.cpp
+  src/game/items.cpp
+  src/game/battle.cpp
   src/game/app.cpp)
 target_include_directories(amr_core PUBLIC src)
 target_link_libraries(amr_core PUBLIC SDL2::SDL2 ${GLES3_LIB})
@@ -69,3 +71,8 @@ add_executable(test_jobs tests/test_jobs.cpp)
 target_link_libraries(test_jobs PRIVATE amr_core)
 add_test(NAME jobs COMMAND test_jobs "${AMR_MAP}" "${AMR_GOLDEN}")
 set_tests_properties(jobs PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_items tests/test_items.cpp)
+target_link_libraries(test_items PRIVATE amr_core)
+add_test(NAME items COMMAND test_items "${AMR_MAP}" "${AMR_GOLDEN}")
+set_tests_properties(items PROPERTIES SKIP_RETURN_CODE 77)

@@ -4,6 +4,7 @@
 //
 //   amherst-run                                  the start screen (pad: stick/D-pad + A; Start or Back pauses)
 //   amherst-run --players N                      skip the start screen: 1 = the full game, 2-4 = split screen
+//   amherst-run --battle balloon|race            skip the start screen into a 2-player battle or VS race
 //   amherst-run --map path/to/amherst.amr        another map file (default: assets/amherst.amr beside the game)
 //   amherst-run --traffic N                      civilian cars around you downtown (default 16, 0 for none)
 //   amherst-run --no-cops | --heat H             no police at all | start with a wanted level (0-4)
@@ -61,6 +62,10 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
         } else if (!std::strcmp(s, "--players") && more) {
             a.players = std::atoi(argv[++i]);
             if (a.players < 1 || a.players > 4) return false;
+        } else if (!std::strcmp(s, "--battle") && more) {
+            const std::string m = argv[++i];
+            a.battle = m == "balloon" ? 1 : (m == "race" ? 2 : 0);
+            if (!a.battle) return false;
         } else if (!std::strcmp(s, "--menu")) {
             a.menu = true;
         } else if (!std::strcmp(s, "--no-cops")) {

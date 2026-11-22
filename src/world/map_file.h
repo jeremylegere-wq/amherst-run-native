@@ -129,6 +129,7 @@ struct MapData {
     std::vector<HubSpot> hubs;
     std::vector<TourSpot> tour_spots;
     std::vector<CivicAddress> addresses;
+    std::vector<TourSpot> sprint_targets;  // VS race finishes (game/battle.py sprint_targets)
     int prop_kind(const std::string& name) const;  // index of a kind, -1 if the map has none of it
 };
 

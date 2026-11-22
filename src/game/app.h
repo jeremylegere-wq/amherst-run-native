@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/input.h"
+#include "game/battle.h"
 #include "game/missions.h"
 #include "render/chase_camera.h"
 #include "render/hud.h"
@@ -25,6 +26,7 @@ struct Options {
     int frames = -1;            // test runs: drive itself for this many frames, then stop
     std::string screenshot;     // ... and save the last picture here
     int players = 0;            // 0: show the start screen (1-4 skip it)
+    int battle = 0;             // skip the start screen into a battle: 1 balloon battle, 2 VS race
     bool menu = false;          // show the start screen even in a test run
     bool at = false, has_heading = false;
     double at_x = 0, at_y = 0, heading = 0;
@@ -41,8 +43,8 @@ public:
     int run();  // until quit (or the test run's frames); returns the exit code
 
 private:
-    enum class Mode { Menu, Single, Split };
-    void start(int players);             // 1: the full game; 2-4: split screen free roam
+    enum class Mode { Menu, Single, Split, Battle };
+    void start(int players, int battle = 0);  // 1: the full game; 2-4: split screen; battle 1 balloon, 2 VS race
     void spawn_players();
     void respawn(int i);
     void step(double dt);
@@ -51,6 +53,9 @@ private:
     void draw_cars();
     void hud_single();
     void hud_split(int i, int x, int y, int w, int h);
+    void hud_battle(int i, int x, int y, int w, int h);
+    void draw_battle_things(int viewer);
+    void view_rect(int i, int& x, int& y, int& w, int& h) const;
     void draw_menu();
     void draw_pause();
     void menu_input(const Actions& a);
@@ -67,6 +72,9 @@ private:
     Input input_;
     std::unique_ptr<Town> town_;
     std::unique_ptr<MissionManager> jobs_;
+    std::unique_ptr<Battle> battle_;
+    int battle_kind_ = 0;
+    unsigned battle_seed_ = 1;
     std::vector<std::unique_ptr<Car>> cars_;  // the human players
     std::vector<ChaseCamera> cams_;
     Mode mode_ = Mode::Menu;
