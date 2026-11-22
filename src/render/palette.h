@@ -13,6 +13,13 @@ inline constexpr std::uint8_t kKerb[3] = {206, 202, 194};
 inline constexpr std::uint8_t kWater[3] = {36, 118, 224};
 inline constexpr std::uint8_t kFog[3] = {160, 206, 244};
 inline constexpr std::uint8_t kSkyTop[3] = {16, 58, 196};
+inline constexpr std::uint8_t kInk[3] = {22, 18, 40};
+inline constexpr std::uint8_t kLineWhite[3] = {250, 250, 250};
+inline constexpr std::uint8_t kLineYellow[3] = {244, 204, 40};
+inline constexpr std::uint8_t kSidewalk[3][3] = {{170, 162, 148}, {206, 202, 194}, {190, 112, 92}};  // edge, concrete, brick
+inline constexpr float kSidewalkW[3] = {0.7f, 1.8f, 2.6f};
+inline constexpr std::uint8_t kCloud[3] = {250, 250, 252};
+inline constexpr std::uint8_t kCloudShade[3] = {214, 222, 240};
 inline constexpr std::uint8_t kSkyBottom[3] = {104, 184, 248};
 inline constexpr std::uint8_t kCarYellow[3] = {245, 219, 61};
 // traffic body colours (game/ai.py PAL_TRAFFIC)

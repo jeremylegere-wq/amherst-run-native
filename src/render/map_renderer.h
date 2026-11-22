@@ -41,6 +41,8 @@ public:
     FrameStats draw(const Camera& cam, float aspect);
     // Build every chunk within view distance of (x, y) now (at the start, so the first frames do not stutter).
     void warm(float x, float y);
+    // Draw a mesh made in its own frame, placed by `model` (cars).
+    void draw_mesh(const Mesh& mesh, const Mat4& model);
     // Draw the unit box (the placeholder car) with the same lighting and fog; `model` places and sizes it.
     void draw_box(const Mat4& model, const std::uint8_t rgb[3]);
     static constexpr float kChunk = 200.0f;
@@ -64,7 +66,7 @@ private:
 
     const World& world_;
     unsigned program_ = 0;
-    int u_mvp_ = -1, u_model_ = -1, u_eye_ = -1, u_fog_ = -1, u_fog_range_ = -1, u_tint_ = -1;
+    int u_mvp_ = -1, u_model_ = -1, u_eye_ = -1, u_fog_ = -1, u_fog_range_ = -1, u_tint_ = -1, u_inked_ = -1;
     Mat4 vp_;
     std::unordered_map<long long, std::unique_ptr<Chunk>> chunks_;
     std::unordered_map<long long, std::vector<Item>> items_;  // what each chunk holds, sorted out at start

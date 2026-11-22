@@ -75,7 +75,8 @@ Mat4 box_model(double x, double y, double z, double heading, double len, double 
 
 App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junctions, const Options& opt)
     : window_(window), world_(world), graph_(graph), junctions_(junctions), opt_(opt), renderer_(world),
-      target_(kW, kH), hud_(kW, kH) {
+      target_(kW, kH), hud_(kW, kH), sky_(kW, kH) {
+    sky_.set_alpha(0.0f);
     start_x_ = opt.at ? opt.at_x : world.map().spawn_x;
     start_y_ = opt.at ? opt.at_y : world.map().spawn_y;
     start_heading_ = opt.has_heading ? opt.heading : world.map().spawn_heading;
@@ -271,18 +272,92 @@ int App::run() {
     return code;
 }
 
+// One car: its cartoon mesh (built the first time this model and look is seen), placed on the car, plus the power
+// slide's sparks and the boost flame (game/render3d.py _draw_effects).
+void App::draw_car(const Car& c, const std::string& model, const CarLook& look, int key) {
+    auto it = car_meshes_.find(key);
+    if (it == car_meshes_.end()) it = car_meshes_.emplace(key, Mesh(build_car(car_shape(model), look))).first;
+    const Mat4 m = translate({static_cast<float>(c.x), static_cast<float>(c.y), static_cast<float>(c.z + c.hop_z)}) *
+                   rotate_z(static_cast<float>(c.heading));
+    renderer_.draw_mesh(it->second, m);
+    const double hl = c.length / 2;
+    const int tick = static_cast<int>(town_ ? town_->time() * 24.0 : 0);
+    if (c.drift) {  // sparks at the rear wheels, coloured by the charge
+        static const std::uint8_t kSparks[4][3] = {{255, 240, 160}, {80, 160, 255}, {255, 150, 30}, {200, 90, 255}};
+        for (int side = -1; side <= 1; side += 2)
+            for (int k = 0; k < 2; ++k) {
+                const double j = ((tick * 7 + k * 5 + (side > 0) * 3) % 5) * 0.12;
+                const double b = side * (c.width / 2 + 0.1 + j), a = -hl + 0.6 - j * 2.0;
+                renderer_.draw_box(box_model(c.x + c.fx() * a + c.rx() * b, c.y + c.fy() * a + c.ry() * b,
+                                             c.z + 0.15 + j, c.heading, 0.24, 0.2, 0.25f),
+                                   kSparks[std::min(3, c.charge_level())]);
+            }
+    }
+    if (c.boost_t > 0.0) {  // a flame out of the back
+        const double n = 1.0 + 0.5 * (tick % 3);
+        renderer_.draw_box(box_model(c.x - c.fx() * (hl + 0.5 * n), c.y - c.fy() * (hl + 0.5 * n), c.z + 0.35, c.heading,
+                                     1.0 * n, 0.56, 0.35f), kOrange);
+        renderer_.draw_box(box_model(c.x - c.fx() * (hl + 0.3 * n), c.y - c.fy() * (hl + 0.3 * n), c.z + 0.42, c.heading,
+                                     0.6 * n, 0.28, 0.21f), kYellow);
+    }
+}
+
 void App::draw_cars() {
+    static const char* kModels[4] = {"fj", "crv", "sorento", "ram"};
     for (int k = 0; k < players_ && mode_ != Mode::Menu; ++k) {
-        const Car& c = *cars_[k];
-        std::uint8_t col[3] = {kTags[k][0], kTags[k][1], kTags[k][2]};
-        if (k == 0) std::copy(palette::kCarYellow, palette::kCarYellow + 3, col);
-        if (battle_ && battle_->racers()[k].ghost > 0.0) rainbow(std::fmod(battle_->time() * 3.0 + k, 1.0), col);
-        renderer_.draw_box(box_model(c.x, c.y, c.z + c.hop_z + 0.3, c.heading, c.length, c.width, 1.65f), col);
+        CarLook look = player_look(k);
+        int key = k;
+        if (battle_ && battle_->racers()[k].ghost > 0.0) {  // a ghost: rainbow body (not cached)
+            rainbow(std::fmod(battle_->time() * 3.0 + k, 1.0), look.body);
+            rainbow(std::fmod(battle_->time() * 3.0 + k + 0.3, 1.0), look.roof);
+            Mesh tmp(build_car(car_shape(kModels[k]), look));
+            const Car& c = *cars_[k];
+            renderer_.draw_mesh(tmp, translate({static_cast<float>(c.x), static_cast<float>(c.y), static_cast<float>(c.z + c.hop_z)}) *
+                                         rotate_z(static_cast<float>(c.heading)));
+            continue;
+        }
+        draw_car(*cars_[k], kModels[k], look, key);
     }
     if (!town_ || mode_ == Mode::Menu) return;
-    for (const auto& c : town_->cars())  // traffic and police: boxes in their colours, for now
-        renderer_.draw_box(box_model(c->x, c->y, c->z + 0.3, c->heading, c->length, c->width, 1.45f),
-                           c->police ? palette::kPoliceBody : palette::kTraffic[c->colour]);
+    const int flash = static_cast<int>(town_->time() * 6.0) % 2 == 0 ? 1 : 2;
+    for (const auto& c : town_->cars()) {
+        if (c->police) draw_car(*c, "sedan", police_look(flash), 100 + flash);
+        else draw_car(*c, "sedan", traffic_look(c->colour), 10 + c->colour);
+    }
+}
+
+// The sky (the street style): bands from deep blue overhead to pale at the horizon, and cartoon clouds that sit at
+// fixed compass bearings, so they stay put as you turn.
+void App::draw_sky(const Camera& cam, int w, int h) {
+    const Vec3 d = normalize(cam.target - cam.eye);
+    const double pitch = std::asin(std::max(-1.0f, std::min(1.0f, -d.z)));
+    const double f = (h / 2.0) / std::tan(cam.fovy / 2.0);
+    const int horizon = static_cast<int>(h / 2.0 - std::tan(pitch) * f);
+    sky_.set_size(w, h);
+    sky_.begin();
+    if (horizon > 0) {
+        const int bands = 16;
+        for (int k = 0; k < bands; ++k) {
+            const float t = static_cast<float>(k) / (bands - 1);
+            std::uint8_t c[3];
+            for (int i = 0; i < 3; ++i)
+                c[i] = static_cast<std::uint8_t>(palette::kSkyTop[i] + (palette::kSkyBottom[i] - palette::kSkyTop[i]) * t);
+            const int y0 = horizon * k / bands, y1 = horizon * (k + 1) / bands;
+            sky_.rect(0, y0 - 40 * (k == 0), w, y1 - y0 + 40 * (k == 0), c);
+        }
+    }
+    const double yaw = std::atan2(d.y, d.x), half = std::atan(std::tan(cam.fovy / 2.0) * w / h);
+    for (int k = 0; k < 9; ++k) {  // nine clouds round the sky
+        const double bearing = k * 0.698 + 0.31 * (k % 3), up = 0.10 + 0.05 * ((k * 5) % 4);
+        const double a = wrap_angle(bearing - yaw);
+        if (std::fabs(a) > half + 0.3) continue;
+        const int cx = static_cast<int>(w / 2.0 + std::tan(a) * f), cy = static_cast<int>(horizon - std::tan(up) * f);
+        const int cw = 26 + (k * 7) % 18, ch = 7 + k % 3;
+        sky_.rect(cx - cw / 2, cy - ch / 2 + 2, cw, ch, palette::kCloudShade);
+        sky_.rect(cx - cw / 2 + 2, cy - ch / 2, cw - 6, ch - 1, palette::kCloud);
+        sky_.rect(cx - cw / 5, cy - ch / 2 - 4, cw / 2, 5, palette::kCloud);
+    }
+    sky_.end();
 }
 
 // The train's blocks (game/render3d.py _draw_train_unit): a dark underframe, then a red locomotive with a yellow
@@ -311,7 +386,9 @@ void App::draw_view(int i, int x, int y, int w, int h) {
     glScissor(x, kH - y - h, w, h);
     glClearColor(palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    const FrameStats st = renderer_.draw(cams_[i].camera(kFovy), static_cast<float>(w) / h);
+    const Camera cam = cams_[i].camera(kFovy);
+    draw_sky(cam, w, h);
+    const FrameStats st = renderer_.draw(cam, static_cast<float>(w) / h);
     tris_total_ += st.triangles;
     draw_cars();
     draw_train();
@@ -337,14 +414,17 @@ void App::draw(int frame) {
     const Uint64 t0 = SDL_GetPerformanceCounter();
     target_.bind();
     hud_.begin();
+    const float ink[3] = {palette::kInk[0] / 255.0f, palette::kInk[1] / 255.0f, palette::kInk[2] / 255.0f};
     if (mode_ == Mode::Menu) {
         draw_menu();
+        target_.ink(0.5f, MapRenderer::kDrawDist + 40.0f, 140.0f, ink);
     } else {
         for (int i = 0; i < players_; ++i) {
             int x, y, w, h;
             view_rect(i, x, y, w, h);
             draw_view(i, x, y, w, h);
         }
+        target_.ink(0.5f, MapRenderer::kDrawDist + 40.0f, 140.0f, ink);  // outlines, then the HUD over them
         glViewport(0, 0, kW, kH);
         if (mode_ == Mode::Single) {
             hud_single();
@@ -552,6 +632,7 @@ void App::draw_menu() {
     glViewport(0, 0, kW, kH);
     glClearColor(palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    draw_sky(cam, kW, kH);
     renderer_.draw(cam, static_cast<float>(kW) / kH);
     hud_.text((kW - hud_.text_width("AMHERST RUN", 4)) / 2, 12, "AMHERST RUN", kYellow, 4);
     hud_.text((kW - hud_.text_width("AMHERST, NOVA SCOTIA")) / 2, 36, "AMHERST, NOVA SCOTIA", palette::kHudText);

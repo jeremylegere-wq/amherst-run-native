@@ -226,6 +226,21 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             t.x = r.get<double>(); t.y = r.get<double>();
             t.label = r.str();
         }
+    } else if (tag == "PANT") {
+        const auto n = r.count(3);
+        if (n != m.roads.size()) return false;  // (ROAD comes first in the file)
+        for (auto& rd : m.roads) {
+            rd.marking = r.get<std::uint8_t>();
+            rd.town_sidewalk = r.get<std::uint8_t>() != 0;
+            rd.gravel = r.get<std::uint8_t>() != 0;
+        }
+        const auto nc = r.count(8);
+        m.downtown_cells.resize(nc);
+        for (auto& c : m.downtown_cells) {
+            const int cx = r.get<std::int32_t>(), cy = r.get<std::int32_t>();
+            c = (static_cast<long long>(cx) << 32) ^ static_cast<unsigned>(cy);
+        }
+        std::sort(m.downtown_cells.begin(), m.downtown_cells.end());
     } else if (tag == "RAIL") {
         m.rails.resize(r.count(4));
         for (auto& w : m.rails) r.points(w);
@@ -254,6 +269,11 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
 }
 
 }  // namespace
+
+bool MapData::downtown(float x, float y) const {
+    const long long k = (static_cast<long long>(std::floor(x / 40.0f)) << 32) ^ static_cast<unsigned>(static_cast<int>(std::floor(y / 40.0f)));
+    return std::binary_search(downtown_cells.begin(), downtown_cells.end(), k);
+}
 
 int MapData::prop_kind(const std::string& name) const {
     for (std::size_t i = 0; i < prop_kinds.size(); ++i)

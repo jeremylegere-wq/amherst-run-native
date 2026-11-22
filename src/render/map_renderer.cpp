@@ -40,6 +40,7 @@ uniform vec3 u_eye;
 uniform vec3 u_fog;
 uniform vec2 u_fog_range;
 uniform vec3 u_tint;    // white for the map; the car's colour on the white box
+uniform float u_inked;  // 1 for buildings, cars and props (they get ink outlines), 0 for the ground, roads, areas
 out vec4 o_color;
 void main() {
     vec3 n = normalize(v_normal);
@@ -47,7 +48,7 @@ void main() {
     float lit = n.z > 0.9 ? 1.0 : (d > 0.25 ? 0.95 : 0.66);   // flat ground stays its own colour
     float dist = distance(v_world, u_eye);
     float fog = floor(clamp((dist - u_fog_range.x) / (u_fog_range.y - u_fog_range.x), 0.0, 1.0) * 4.0) / 4.0;
-    o_color = vec4(mix(v_color * u_tint * lit, u_fog, fog), 1.0);
+    o_color = vec4(mix(v_color * u_tint * lit, u_fog, fog), u_inked);
 }
 )";
 
@@ -197,6 +198,7 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
     u_fog_ = glGetUniformLocation(program_, "u_fog");
     u_fog_range_ = glGetUniformLocation(program_, "u_fog_range");
     u_tint_ = glGetUniformLocation(program_, "u_tint");
+    u_inked_ = glGetUniformLocation(program_, "u_inked");
     const auto& m = world_.map();
     water_level_.resize(m.polys.size(), 0.0f);
     for (std::size_t i = 0; i < m.polys.size(); ++i) {
@@ -326,25 +328,83 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
     auto items = items_.find(key(cx, cy));
     if (items != items_.end()) {
         for (const Item& it : items->second) {
-            if (it.kind == 0) {  // a road segment, in pieces that follow the ground
+            if (it.kind == 0) {  // a road segment, in pieces that follow the ground: shoulder or sidewalk, surface, paint
                 const Road& rd = m.roads[it.index];
                 const Point2 a = rd.points[it.sub], b = rd.points[it.sub + 1];
-                const Vec3 ma = mitre(rd.points, it.sub), mb = mitre(rd.points, it.sub + 1);
                 const float hw = rd.width / 2, lift = road_lift(rd);
-                const int n = std::max(1, static_cast<int>(std::ceil(std::hypot(b.x - a.x, b.y - a.y) / kPiece)));
-                const std::uint8_t* col = road_colour(rd);
+                const float seg = std::hypot(b.x - a.x, b.y - a.y);
+                if (seg < 0.01f) continue;
+                const int n = std::max(1, static_cast<int>(std::ceil(seg / kPiece)));
+                const std::uint8_t* col = rd.gravel ? palette::kGravel : road_colour(rd);
+                float along0 = 0;  // where this segment starts along the road (dashes are spaced along the road)
+                for (int k = 0; k < it.sub; ++k)
+                    along0 += std::hypot(rd.points[k + 1].x - rd.points[k].x, rd.points[k + 1].y - rd.points[k].y);
+                const float dx = seg > 0 ? (b.x - a.x) / seg : 1, dy = seg > 0 ? (b.y - a.y) / seg : 0;
+                // a strip of the road from t0 to t1 (fractions of the segment), `off` metres to the right of the
+                // centre, `half` metres either side of that, lengthened by `ext` at both ends so neighbouring pieces
+                // overlap (game/render3d.py _quad: no mitred joints, which balloon at sharp bends), lifted over the ground
+                const Vec3 nrm{-dy, dx, 0};
+                auto strip = [&](float t0, float t1, float off, float half, float lift_by, const std::uint8_t* c,
+                                 float ext = 0.0f, MeshBuilder* into = nullptr) {
+                    MeshBuilder& mb_ = into ? *into : o;
+                    const float x0 = a.x + (b.x - a.x) * t0 - dx * ext, y0 = a.y + (b.y - a.y) * t0 - dy * ext;
+                    const float x1 = a.x + (b.x - a.x) * t1 + dx * ext, y1 = a.y + (b.y - a.y) * t1 + dy * ext;
+                    // across the strip in columns about 3 m wide, so it follows the ground's bends on steep hills
+                    const int cols = std::max(1, static_cast<int>(std::ceil(2 * half / 3.0f)));
+                    auto at = [&](float x, float y) { return v3(x, y, T.mesh_height(x, y) + lift_by); };
+                    for (int c0 = 0; c0 < cols; ++c0) {
+                        const float u0 = off - half + 2 * half * c0 / cols, u1 = off - half + 2 * half * (c0 + 1) / cols;
+                        const Vec3 r0 = at(x0 + nrm.x * u0, y0 + nrm.y * u0), l0 = at(x0 + nrm.x * u1, y0 + nrm.y * u1);
+                        const Vec3 r1 = at(x1 + nrm.x * u0, y1 + nrm.y * u0), l1 = at(x1 + nrm.x * u1, y1 + nrm.y * u1);
+                        const auto i0 = mb_.add(r0, up, c), i1 = mb_.add(r1, up, c), i2 = mb_.add(l1, up, c), i3 = mb_.add(l0, up, c);
+                        mb_.tri(i0, i1, i2);
+                        mb_.tri(i0, i2, i3);
+                    }
+                };
                 for (int k = 0; k < n; ++k) {
                     const float t0 = static_cast<float>(k) / n, t1 = static_cast<float>(k + 1) / n;
-                    const float x0 = a.x + (b.x - a.x) * t0, y0 = a.y + (b.y - a.y) * t0;
-                    const float x1 = a.x + (b.x - a.x) * t1, y1 = a.y + (b.y - a.y) * t1;
-                    if (!inside((x0 + x1) / 2, (y0 + y1) / 2)) continue;
-                    const Vec3 n0 = (ma * (1 - t0) + mb * t0) * hw, n1 = (ma * (1 - t1) + mb * t1) * hw;
-                    auto at = [&](float x, float y) { return v3(x, y, T.mesh_height(x, y) + lift); };
-                    const Vec3 l0 = at(x0 + n0.x, y0 + n0.y), r0 = at(x0 - n0.x, y0 - n0.y);
-                    const Vec3 l1 = at(x1 + n1.x, y1 + n1.y), r1 = at(x1 - n1.x, y1 - n1.y);
-                    const auto i0 = o.add(r0, up, col), i1 = o.add(r1, up, col), i2 = o.add(l1, up, col), i3 = o.add(l0, up, col);
-                    o.tri(i0, i1, i2);
-                    o.tri(i0, i2, i3);
+                    const float mx = a.x + (b.x - a.x) * (t0 + t1) / 2, my = a.y + (b.y - a.y) * (t0 + t1) / 2;
+                    if (!inside(mx, my)) continue;
+                    // the shoulder or sidewalk beside it (game/render3d.py _draw_road_pieces), under the surface
+                    const int sw = !rd.town_sidewalk ? 0 : (m.downtown(mx, my) ? 2 : 1);
+                    const std::uint8_t* edge = (rd.gravel && sw == 0) ? palette::kGravel : palette::kSidewalk[sw];
+                    strip(t0, t1, 0.0f, hw + palette::kSidewalkW[sw], 0.04f, edge, 0.3f, &ar);  // under every road
+                    strip(t0, t1, 0.0f, hw, lift, col, 0.3f);
+                    // solid paint; offsets are to the right of travel (the mitre is (-dy, dx), y grows south), as Python
+                    const std::uint8_t *white = palette::kLineWhite, *yellow = palette::kLineYellow;
+                    const float pl = 0.15f;
+                    switch (rd.marking) {
+                        case kDoubleYellow:
+                            strip(t0, t1, 0.2f, 0.04f, pl, yellow);
+                            strip(t0, t1, -0.2f, 0.04f, pl, yellow);
+                            break;
+                        case kHighway:
+                            strip(t0, t1, hw - 0.5f, 0.05f, pl, white);
+                            strip(t0, t1, -hw + 0.5f, 0.05f, pl, white);
+                            break;
+                        case kEdges:  // white on the right edge, yellow on the left (a one-way road or a ramp)
+                            strip(t0, t1, hw - 0.5f, 0.05f, pl, white);
+                            strip(t0, t1, -(hw - 0.5f), 0.05f, pl, yellow);
+                            break;
+                        default: break;
+                    }
+                }
+                // dashes: 3 m long every 10 m along the road, centred 5 m in (game/render3d.py _draw_marking)
+                const bool dashed = rd.marking == kDashYellow || rd.marking == kDashWhite || (rd.marking == kHighway && hw >= 3.7f);
+                if (dashed && seg > 0) {
+                    for (float c = 5.0f + 10.0f * std::ceil((along0 - 6.5f) / 10.0f); c - 1.5f < along0 + seg; c += 10.0f) {
+                        const float s0 = std::max(0.0f, c - 1.5f - along0), s1 = std::min(seg, c + 1.5f - along0);
+                        if (s1 <= s0) continue;
+                        const float mx = a.x + dx * (s0 + s1) / 2, my = a.y + dy * (s0 + s1) / 2;
+                        if (!inside(mx, my)) continue;
+                        const float t0 = s0 / seg, t1 = s1 / seg;
+                        if (rd.marking == kDashWhite) {
+                            strip(t0, t1, hw / 3, 0.05f, 0.15f, palette::kLineWhite);
+                            strip(t0, t1, -hw / 3, 0.05f, 0.15f, palette::kLineWhite);
+                        } else {
+                            strip(t0, t1, 0.0f, 0.05f, 0.15f, rd.marking == kDashYellow ? palette::kLineYellow : palette::kLineWhite);
+                        }
+                    }
                 }
             } else if (it.kind == 1) {  // an overpass: deck slab with its thick concrete edges
                 const Span& sp = m.spans[it.index];
@@ -550,11 +610,17 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     for (const auto& w : wanted)  // the nearest missing ones are built first; far ones may wait a frame or two
         if (Chunk* c = chunk(w.second.first, w.second.second, stats, stats.chunks_built < kBuildsPerFrame))
             visible.push_back(c);
+    glUniform1f(u_inked_, 0.0f);
     for (Chunk* c : visible) {
         c->ground.draw();
-        c->solid.draw();
-        stats.triangles += (c->ground.count() + c->solid.count()) / 3;
+        stats.triangles += c->ground.count() / 3;
     }
+    glUniform1f(u_inked_, 1.0f);
+    for (Chunk* c : visible) {
+        c->solid.draw();
+        stats.triangles += c->solid.count() / 3;
+    }
+    glUniform1f(u_inked_, 0.0f);
     glEnable(GL_POLYGON_OFFSET_FILL);  // areas and roads lie on the ground: pull them forward a little
     glPolygonOffset(-1.0f, -4.0f);
     glDepthMask(GL_FALSE);             // areas first, without depth, so the roads after them always cover them
@@ -568,8 +634,19 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
         stats.triangles += c->overlay.count() / 3;
     }
     glDisable(GL_POLYGON_OFFSET_FILL);
+    glUniform1f(u_inked_, 1.0f);  // what is drawn after (cars, the train, beacons) gets ink
     stats.chunks_drawn = static_cast<int>(visible.size());
     return stats;
+}
+
+void MapRenderer::draw_mesh(const Mesh& mesh, const Mat4& model) {
+    glUseProgram(program_);
+    glUniformMatrix4fv(u_mvp_, 1, GL_FALSE, vp_.m);
+    glUniformMatrix4fv(u_model_, 1, GL_FALSE, model.m);
+    glUniform3f(u_tint_, 1, 1, 1);
+    mesh.draw();
+    const Mat4 identity;
+    glUniformMatrix4fv(u_model_, 1, GL_FALSE, identity.m);
 }
 
 void MapRenderer::draw_box(const Mat4& model, const std::uint8_t rgb[3]) {

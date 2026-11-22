@@ -23,8 +23,9 @@ void main() {
 const char* kFragment = R"(#version 300 es
 precision mediump float;
 in vec3 v_color;
+uniform float u_alpha;
 out vec4 o_color;
-void main() { o_color = vec4(v_color, 1.0); }
+void main() { o_color = vec4(v_color, u_alpha); }
 )";
 
 // 3x5 glyphs, one row per entry, bit 2 = left column.
@@ -89,6 +90,14 @@ void Hud::rect(int x, int y, int w, int h, const std::uint8_t rgb[3]) {
     for (const auto& p : v) verts_.insert(verts_.end(), {p[0], p[1], r, g, b});
 }
 
+void Hud::vgrad(int x, int y, int w, int h, const std::uint8_t top[3], const std::uint8_t bottom[3]) {
+    const float t[3] = {top[0] / 255.0f, top[1] / 255.0f, top[2] / 255.0f};
+    const float b[3] = {bottom[0] / 255.0f, bottom[1] / 255.0f, bottom[2] / 255.0f};
+    const float x0 = static_cast<float>(x), y0 = static_cast<float>(y), x1 = x0 + w, y1 = y0 + h;
+    verts_.insert(verts_.end(), {x0, y0, t[0], t[1], t[2], x1, y0, t[0], t[1], t[2], x1, y1, b[0], b[1], b[2],
+                                 x0, y0, t[0], t[1], t[2], x1, y1, b[0], b[1], b[2], x0, y1, b[0], b[1], b[2]});
+}
+
 int Hud::text_width(const std::string& s, int scale) const { return s.empty() ? 0 : static_cast<int>(s.size()) * 4 * scale - scale; }
 
 void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], int scale) {
@@ -117,6 +126,7 @@ void Hud::end() {
     glDisable(GL_CULL_FACE);
     glUseProgram(program_);
     glUniform2f(glGetUniformLocation(program_, "u_size"), static_cast<float>(w_), static_cast<float>(h_));
+    glUniform1f(glGetUniformLocation(program_, "u_alpha"), alpha_);
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts_.size() * sizeof(float)), verts_.data(), GL_STREAM_DRAW);

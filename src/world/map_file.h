@@ -19,8 +19,13 @@ enum RoadFlag : std::uint8_t { kOneWay = 1, kBridge = 2, kDeck = 4, kTunnel = 8,
 enum RoadType : std::uint8_t { kLane = 0, kSide = 1, kMain = 2 };
 enum Service : std::uint8_t { kNoService = 0, kDriveway = 1, kTrack = 2, kOtherService = 3 };
 
+enum Marking : std::uint8_t { kNoPaint = 0, kDoubleYellow, kDashYellow, kDashWhite, kHighway, kEdges };
+
 struct Road {
     std::uint8_t type = kSide, service = kNoService, flags = 0, lanes = 0;
+    std::uint8_t marking = kNoPaint;  // road paint (game/streetdetail.py marking)
+    bool town_sidewalk = false;       // a concrete sidewalk (brick downtown); else a narrow shoulder
+    bool gravel = false;
     float width = 7, speed_kmh = 50;
     std::uint32_t name = 0;
     std::vector<Point2> points;
@@ -129,6 +134,8 @@ struct MapData {
     std::vector<HubSpot> hubs;
     std::vector<TourSpot> tour_spots;
     std::vector<CivicAddress> addresses;
+    std::vector<long long> downtown_cells;     // 40 m cells (cx << 32 ^ cy) where sidewalks are brick, sorted
+    bool downtown(float x, float y) const;
     std::vector<TourSpot> sprint_targets;  // VS race finishes (game/battle.py sprint_targets)
     std::vector<std::vector<Point2>> rails;    // rail ways (drawn as rail beds)
     std::vector<GraphNode> train_line;         // the train's line (game/train.py stitch)
