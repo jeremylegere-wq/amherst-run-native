@@ -1,0 +1,120 @@
+#include "render/hud.h"
+
+#include <cctype>
+#include <cstdio>
+
+#include "render/shader.h"
+
+namespace amr {
+
+namespace {
+
+const char* kVertex = R"(#version 300 es
+layout(location = 0) in vec2 a_pos;
+layout(location = 1) in vec3 a_color;
+uniform vec2 u_size;
+out vec3 v_color;
+void main() {
+    v_color = a_color;
+    gl_Position = vec4(a_pos.x / u_size.x * 2.0 - 1.0, 1.0 - a_pos.y / u_size.y * 2.0, 0.0, 1.0);
+}
+)";
+
+const char* kFragment = R"(#version 300 es
+precision mediump float;
+in vec3 v_color;
+out vec4 o_color;
+void main() { o_color = vec4(v_color, 1.0); }
+)";
+
+// 3x5 glyphs, one row per entry, bit 2 = left column.
+struct Glyph {
+    char c;
+    unsigned char rows[5];
+};
+const Glyph kFont[] = {
+    {'0', {7, 5, 5, 5, 7}}, {'1', {2, 6, 2, 2, 7}}, {'2', {7, 1, 7, 4, 7}}, {'3', {7, 1, 7, 1, 7}},
+    {'4', {5, 5, 7, 1, 1}}, {'5', {7, 4, 7, 1, 7}}, {'6', {7, 4, 7, 5, 7}}, {'7', {7, 1, 1, 2, 2}},
+    {'8', {7, 5, 7, 5, 7}}, {'9', {7, 5, 7, 1, 7}}, {'A', {2, 5, 7, 5, 5}}, {'B', {6, 5, 6, 5, 6}},
+    {'C', {3, 4, 4, 4, 3}}, {'D', {6, 5, 5, 5, 6}}, {'E', {7, 4, 6, 4, 7}}, {'F', {7, 4, 6, 4, 4}},
+    {'G', {3, 4, 5, 5, 3}}, {'H', {5, 5, 7, 5, 5}}, {'I', {7, 2, 2, 2, 7}}, {'J', {1, 1, 1, 5, 2}},
+    {'K', {5, 5, 6, 5, 5}}, {'L', {4, 4, 4, 4, 7}}, {'M', {5, 7, 7, 5, 5}}, {'N', {6, 5, 5, 5, 5}},
+    {'O', {2, 5, 5, 5, 2}}, {'P', {6, 5, 6, 4, 4}}, {'Q', {2, 5, 5, 6, 3}}, {'R', {6, 5, 6, 5, 5}},
+    {'S', {3, 4, 2, 1, 6}}, {'T', {7, 2, 2, 2, 2}}, {'U', {5, 5, 5, 5, 7}}, {'V', {5, 5, 5, 5, 2}},
+    {'W', {5, 5, 7, 7, 5}}, {'X', {5, 5, 2, 5, 5}}, {'Y', {5, 5, 2, 2, 2}}, {'Z', {7, 1, 2, 4, 7}},
+    {'/', {1, 1, 2, 4, 4}}, {'-', {0, 0, 7, 0, 0}}, {'.', {0, 0, 0, 0, 2}}, {' ', {0, 0, 0, 0, 0}},
+};
+const Glyph* glyph(char c) {
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    for (const Glyph& g : kFont)
+        if (g.c == c) return &g;
+    return nullptr;
+}
+const std::uint8_t kShadow[3] = {16, 16, 24};
+
+}  // namespace
+
+Hud::Hud(int width, int height) : w_(width), h_(height) {
+    std::string err;
+    program_ = make_program(kVertex, kFragment, err);
+    if (!program_) {
+        std::fprintf(stderr, "hud shader: %s\n", err.c_str());
+        return;
+    }
+    glGenVertexArrays(1, &vao_);
+    glGenBuffers(1, &vbo_);
+    glBindVertexArray(vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
+    glBindVertexArray(0);
+}
+
+Hud::~Hud() {
+    if (vbo_) glDeleteBuffers(1, &vbo_);
+    if (vao_) glDeleteVertexArrays(1, &vao_);
+    if (program_) glDeleteProgram(program_);
+}
+
+void Hud::begin() { verts_.clear(); }
+
+void Hud::rect(int x, int y, int w, int h, const std::uint8_t rgb[3]) {
+    const float r = rgb[0] / 255.0f, g = rgb[1] / 255.0f, b = rgb[2] / 255.0f;
+    const float x0 = static_cast<float>(x), y0 = static_cast<float>(y), x1 = x0 + w, y1 = y0 + h;
+    const float v[6][2] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y0}, {x1, y1}, {x0, y1}};
+    for (const auto& p : v) verts_.insert(verts_.end(), {p[0], p[1], r, g, b});
+}
+
+int Hud::text_width(const std::string& s, int scale) const { return s.empty() ? 0 : static_cast<int>(s.size()) * 4 * scale - scale; }
+
+void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], int scale) {
+    for (int pass = 0; pass < 2; ++pass) {  // shadow first, one dot down and right
+        const std::uint8_t* col = pass == 0 ? kShadow : rgb;
+        const int off = pass == 0 ? scale : 0;
+        int cx = x;
+        for (char c : s) {
+            if (const Glyph* g = glyph(c))
+                for (int row = 0; row < 5; ++row)
+                    for (int bit = 0; bit < 3; ++bit)
+                        if (g->rows[row] & (4 >> bit)) rect(cx + bit * scale + off, y + row * scale + off, scale, scale, col);
+            cx += 4 * scale;
+        }
+    }
+}
+
+void Hud::end() {
+    if (!program_ || verts_.empty()) return;
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glUseProgram(program_);
+    glUniform2f(glGetUniformLocation(program_, "u_size"), static_cast<float>(w_), static_cast<float>(h_));
+    glBindVertexArray(vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts_.size() * sizeof(float)), verts_.data(), GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(verts_.size() / 5));
+    glBindVertexArray(0);
+}
+
+}  // namespace amr

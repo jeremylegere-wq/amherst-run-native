@@ -1,6 +1,7 @@
 #include "sim/ai.h"
 
 #include "sim/junctions.h"
+#include "world/world.h"
 
 #include <algorithm>
 #include <cmath>
@@ -122,6 +123,88 @@ void drive_traffic(AICar& car, const RoadGraph& graph, const std::vector<const C
     else car.stuck = std::max(0.0, car.stuck - dt);
     if (!car.jn_hold) car.wait = v_t < 0.5 ? car.wait + dt : std::max(0.0, car.wait - dt);
     if (car.stuck > 6.0 || car.wait > 20.0) car.dead = true;
+}
+
+bool clear_line(const World& world, double x0, double y0, double x1, double y1, double step) {
+    const double d = std::hypot(x1 - x0, y1 - y0);
+    const int n = std::max(1, static_cast<int>(d / step));
+    for (int i = 1; i < n; ++i) {
+        const double t = static_cast<double>(i) / n;
+        if (world.in_building(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)) return false;
+    }
+    return true;
+}
+
+void drive_police(AICar& car, const RoadGraph& graph, const World& world, const Car& player,
+                  const std::vector<const Car*>& others, double dt, const std::function<double()>& random01,
+                  bool active, double v_cap) {
+    if (!active) {  // the heat is off: stand down
+        car.throttle = false;
+        car.steer = 0.0;
+        car.brake = car.forward_speed() > 1.0;
+        return;
+    }
+    if (car.reverse_t > 0.0) {  // backing out of a jam
+        car.reverse_t -= dt;
+        car.throttle = false;
+        car.brake = true;
+        car.steer = car.rev_steer;
+        if (car.reverse_t <= 0.0) car.stuck = 0.0;
+        return;
+    }
+    const double dx = player.x - car.x, dy = player.y - car.y, dist = std::hypot(dx, dy);
+    double tx, ty, v_t;
+    if (dist < 70.0 && clear_line(world, car.x, car.y, player.x, player.y)) {
+        const double lead = std::min(0.6, dist / 40.0);
+        tx = player.x + player.vx * lead;
+        ty = player.y + player.vy * lead;
+        v_t = v_cap;
+        if (dist < 14.0) v_t = std::max(player.speed() + 4.0, 7.0);  // stay glued to the bumper
+        car.path_t = 0.0;  // plan a fresh route if the view is lost
+    } else {
+        car.path_t -= dt;
+        if (car.path_t <= 0.0 || car.route.empty()) {
+            car.path_t = 1.0 + random01() * 0.4;
+            // moving: keep going forward; nearly stopped: free to turn round
+            const double h = car.heading;
+            const int src = graph.nearest_node(car.x, car.y, 70.0, car.speed() > 4.0 ? &h : nullptr);
+            const int dst = graph.nearest_node(player.x, player.y, 90.0);
+            car.route = (src >= 0 && dst >= 0) ? graph.shortest_path(src, dst) : std::vector<int>{};
+        }
+        while (!car.route.empty() &&
+               std::hypot(graph.nodes[car.route[0]].x - car.x, graph.nodes[car.route[0]].y - car.y) < 7.0)
+            car.route.erase(car.route.begin());
+        if (!car.route.empty()) {
+            tx = graph.nodes[car.route[0]].x;
+            ty = graph.nodes[car.route[0]].y;
+            v_t = v_cap;
+            if (car.route.size() > 1) {  // slow for the corner at the next node
+                const double nx = graph.nodes[car.route[1]].x, ny = graph.nodes[car.route[1]].y;
+                const double ang = std::fabs(wrap_angle(std::atan2(ny - ty, nx - tx) - std::atan2(ty - car.y, tx - car.x)));
+                const double vc = std::max(7.0, v_cap * (1.0 - 1.1 * ang / kPi));
+                const double d = std::hypot(tx - car.x, ty - car.y);
+                v_t = std::min(v_t, std::sqrt(vc * vc + 2 * 9.0 * std::max(0.0, d - 4.0)));
+            }
+        } else {
+            tx = player.x;
+            ty = player.y;
+            v_t = 14.0;
+        }
+    }
+    if (player.speed() < 5.0 && dist < 25.0) v_t = std::min(v_t, std::max(0.0, dist - 5.5));  // box him in
+    const double err = wrap_angle(std::atan2(ty - car.y, tx - car.x) - car.heading);
+    const double steer = std::max(-1.0, std::min(1.0, err * 2.0));
+    if (std::fabs(err) > 1.0) v_t = std::min(v_t, 6.0);
+    v_t = std::min(v_t, obstacle_limit(car, others, 12.0, 1.7));
+    car.steer = steer;
+    speed_control(car, v_t);
+    if (car.speed() < 1.0 && v_t > 4.0) car.stuck += dt;
+    else car.stuck = std::max(0.0, car.stuck - dt);
+    if (car.stuck > 1.5) {
+        car.reverse_t = 1.2;
+        car.rev_steer = steer >= 0 ? -1.0 : 1.0;
+        car.stuck = 0.0;
+    }
 }
 
 }  // namespace amr

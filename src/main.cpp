@@ -5,6 +5,7 @@
 //   amherst-run                                  play (pad: left stick, A handbrake, LB/RB hop and slide, Back quits)
 //   amherst-run --map path/to/amherst.amr        another map file (default: assets/amherst.amr beside the game)
 //   amherst-run --traffic N                      civilian cars around you downtown (default 16, 0 for none)
+//   amherst-run --no-cops | --heat H             no police at all | start with a wanted level (0-4)
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 #include <SDL.h>
@@ -20,6 +21,7 @@
 #include "render/gl.h"
 #include "render/shader.h"
 #include "render/chase_camera.h"
+#include "render/hud.h"
 #include "render/map_renderer.h"
 #include "render/palette.h"
 #include "render/target.h"
@@ -45,6 +47,8 @@ struct Args {
     std::string screenshot, map;
     bool at = false, has_heading = false;
     int traffic = 16;
+    bool cops = true;
+    double heat = 0;
     float at_x = 0, at_y = 0, heading = 0;
 };
 
@@ -73,6 +77,10 @@ bool parse(int argc, char** argv, Args& a) {
             a.frames = std::atoi(argv[++i]);
         } else if (!std::strcmp(argv[i], "--screenshot") && i + 1 < argc) {
             a.screenshot = argv[++i];
+        } else if (!std::strcmp(argv[i], "--no-cops")) {
+            a.cops = false;
+        } else if (!std::strcmp(argv[i], "--heat") && i + 1 < argc) {
+            a.heat = std::atof(argv[++i]);
         } else if (!std::strcmp(argv[i], "--traffic") && i + 1 < argc) {
             a.traffic = std::atoi(argv[++i]);
         } else if (!std::strcmp(argv[i], "--map") && i + 1 < argc) {
@@ -147,7 +155,10 @@ int main(int argc, char** argv) {
     amr::Car car(sx, sy, args.has_heading ? args.heading : world.map().spawn_heading, amr::player_model(0));
     car.z = world.height_at(sx, sy, world.ground(sx, sy));
     amr::Junctions junctions(world.map(), graph);
-    amr::Town town(world, graph, &junctions, 1, args.traffic);
+    amr::Town town(world, graph, &junctions, 1, args.traffic, args.cops);
+    town.add_heat(args.heat);
+    amr::Hud hud(kInternalW, kInternalH);
+    const double start_x = sx, start_y = sy, start_heading = car.heading;
     amr::ChaseCamera chase(car);
     chase.update(car, world, 0.0, true);
     renderer.warm(sx, sy);
@@ -174,10 +185,19 @@ int main(int argc, char** argv) {
         last = now;
         while (acc >= 1.0 / kPhysicsHz) {
             const double dt = 1.0 / kPhysicsHz, px = car.x, py = car.y;  // as game/main.py steps the player
+            if (town.state() != amr::TownState::Playing) drive = amr::CarInput{false, false, 0.0, true, false};
+            car.power = town.player_power();
             car.update(dt, drive, world.on_road(car.x, car.y));
-            amr::move_and_slide(car, world, px, py, true);
+            const double impact = amr::move_and_slide(car, world, px, py, true);
             amr::settle_height(car, world, dt);
-            town.update(dt, car);
+            town.update(dt, car, impact);
+            if (town.consume_reset()) {  // after BUSTED or WRECKED: back to the start, fresh car, quiet town
+                car = amr::Car(start_x, start_y, start_heading, amr::player_model(0));
+                car.z = world.height_at(static_cast<float>(start_x), static_cast<float>(start_y),
+                                        world.ground(static_cast<float>(start_x), static_cast<float>(start_y)));
+                town.reset();
+                chase.update(car, world, 0.0, true);
+            }
             chase.update(car, world, dt);
             acc -= 1.0 / kPhysicsHz;
         }
@@ -197,14 +217,14 @@ int main(int argc, char** argv) {
         body.at(0, 1) *= wid; body.at(1, 1) *= wid;
         body.at(2, 2) = 1.65f;
         renderer.draw_box(body, amr::palette::kCarYellow);
-        for (const auto& c : town.cars()) {  // traffic: boxes in their colours, for now
+        for (const auto& c : town.cars()) {  // traffic and police: boxes in their colours, for now
             amr::Mat4 m = amr::translate({static_cast<float>(c->x), static_cast<float>(c->y), static_cast<float>(c->z) + 0.3f}) *
                           amr::rotate_z(static_cast<float>(c->heading));
             const float l = static_cast<float>(c->length), w = static_cast<float>(c->width);
             m.at(0, 0) *= l; m.at(1, 0) *= l;
             m.at(0, 1) *= w; m.at(1, 1) *= w;
             m.at(2, 2) = 1.45f;
-            renderer.draw_box(m, amr::palette::kTraffic[c->colour]);
+            renderer.draw_box(m, c->police ? amr::palette::kPoliceBody : amr::palette::kTraffic[c->colour]);
         }
         if (args.frames >= 0) {
             glFinish();  // honest timing in test runs: wait for the GPU
@@ -219,6 +239,20 @@ int main(int argc, char** argv) {
             }
             tris_total += st.triangles;
         }
+
+        hud.begin();  // speed, stars, damage, and the big BUSTED / WRECKED
+        const std::string kmh = std::to_string(static_cast<int>(std::lround(car.speed() * 3.6))) + " KM/H";
+        hud.text(6, kInternalH - 14, kmh, amr::palette::kHudText, 2);
+        for (int k = 0; k < 4; ++k)
+            hud.rect(kInternalW - 52 + k * 12, 6, 9, 9, k < town.stars() ? amr::palette::kHudStar : amr::palette::kHudStarOff);
+        hud.text(kInternalW - 82, kInternalH - 13, "DMG", amr::palette::kHudText);
+        hud.rect(kInternalW - 66, kInternalH - 14, 60, 7, amr::palette::kHudBar);
+        hud.rect(kInternalW - 65, kInternalH - 13, static_cast<int>(58 * town.damage() / 100.0), 5, amr::palette::kHudDamage);
+        if (town.state() != amr::TownState::Playing) {
+            const std::string big = town.state() == amr::TownState::Busted ? "BUSTED" : "WRECKED";
+            hud.text((kInternalW - hud.text_width(big, 4)) / 2, 60, big, amr::palette::kHudRed, 4);
+        }
+        hud.end();
 
         int ww = 0, wh = 0;
         SDL_GL_GetDrawableSize(win, &ww, &wh);

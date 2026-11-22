@@ -1,5 +1,5 @@
-// AI drivers (game/ai.py): civilian traffic that follows the road graph. They drive the same Car physics as the
-// player and only set three controls (throttle, brake, steer), about 20 times a second. Police come later.
+// AI drivers (game/ai.py): civilian traffic that follows the road graph, and police that chase the player. They drive
+// the same Car physics as the player and only set three controls (throttle, brake, steer), about 20 times a second.
 #pragma once
 #include <functional>
 #include <vector>
@@ -29,7 +29,23 @@ public:
     bool has_v_smooth = false;
     double v_smooth = 0;
     int colour = 0;             // which traffic colour (drawing)
+    // police
+    std::vector<int> route;     // node ids still to visit
+    double path_t = 0;          // seconds until the route is planned again
+    double reverse_t = 0, rev_steer = 1.0;  // backing out of a jam
+    double stand_t = 0;         // time spent standing down
 };
+
+class World;
+
+// True if no building stands on the straight line between two points (checked every 4 m).
+bool clear_line(const World& world, double x0, double y0, double x1, double y1, double step = 4.0);
+
+// One decision for a police car: straight at the player when there is a clear view, otherwise along the road graph.
+// active: the heat is on (else stand down); v_cap: top chase speed; random01: the dice for re-planning (0..1).
+void drive_police(AICar& car, const RoadGraph& graph, const World& world, const Car& player,
+                  const std::vector<const Car*>& others, double dt, const std::function<double()>& random01,
+                  bool active, double v_cap);
 
 double wrap_angle(double a);  // to [-pi, pi)
 

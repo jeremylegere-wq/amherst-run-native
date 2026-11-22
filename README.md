@@ -9,7 +9,8 @@ The Python game is the reference; the plan is in its `docs/CPP_PORT_PLAN.md`.
 physics: grip, handbrake, hop, power slides and boosts, the hills' pull, overpass decks, walls you scrape along and
 trees and posts you bounce off (all 455,000 of the map's trees, simply drawn). It matches the Python game to under 2 mm
 on its golden drives. Phase 2 has begun: civilian traffic on the road graph (16 cars downtown, fewer on quiet roads),
-driven like the Python game's, stopping at lights and stop signs, giving way, and bumping into you. Not yet: police, the cars' real shapes, landmarks,
+driven like the Python game's, stopping at lights and stop signs, giving way, and bumping into you; police who chase
+you when you hit traffic, the wanted stars, damage, BUSTED and WRECKED, and a small HUD. Not yet: the jobs, menus, the cars' real shapes, landmarks,
 the street style's detail. The Xbox and Android builds (phase 0) are still to do.
 
 | Target | Status |
@@ -40,11 +41,13 @@ replays the Python game's scripted drives (into a house, up an overpass, a handb
 a tree) and
 checks the car follows the same path. The `traffic` test checks the road graph's A* routes and nearest nodes and
 replays the Python game's traffic drivers (including at a junction with lights, a stop sign and an all-way stop),
-then runs a minute of town and checks the cars keep moving on the roads.
+then the police chases (boxing in, chasing, standing down) and the town's rules (heat, arrests, damage), then runs a
+minute of town and checks the cars keep moving on the roads.
 
 Controls (as the Python game): left stick or D-pad steers, up is gas, down brakes and reverses (RT/LT work too), A is
 the handbrake, LB/RB hop (hold through a turn at speed to power-slide, let go to boost), Back quits. Keyboard: arrows or
 WASD, Space handbrake, Shift hop, Esc quits.
+`--heat H` starts wanted (0-4), `--no-cops` turns the police off, `--traffic N` sets the traffic.
 `--at X,Y --heading DEG` starts at a map point (metres; the map's y grows south) facing a compass bearing.
 `--frames 120 --screenshot out.bmp` drives itself, saves the 320x180 picture and exits; with
 `SDL_VIDEODRIVER=offscreen` it needs no display (CI uses this).

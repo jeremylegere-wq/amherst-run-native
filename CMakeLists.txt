@@ -20,6 +20,7 @@ add_library(amr_core STATIC
   src/render/shader.cpp
   src/render/mesh.cpp
   src/render/map_renderer.cpp
+  src/render/hud.cpp
   src/world/map_file.cpp
   src/world/world.cpp
   src/sim/car.cpp
