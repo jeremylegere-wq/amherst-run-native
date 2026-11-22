@@ -56,7 +56,7 @@ def install(amr, golden_zip=None, golden_dir=None):
         with zipfile.ZipFile(io.BytesIO(golden_zip)) as z:
             for info in z.infolist():
                 name = os.path.basename(info.filename)
-                if info.is_dir() or not name.endswith(".csv"):
+                if info.is_dir() or not name.endswith((".csv", ".tsv")):
                     continue
                 os.makedirs(dest, exist_ok=True)
                 with open(os.path.join(dest, name), "wb") as f:
