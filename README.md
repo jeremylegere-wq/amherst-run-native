@@ -18,7 +18,7 @@ the street style's sky, clouds and distant hills, cartoon cars, road paint, kerb
 outlines, see-through shadows, the landmark props (the border lighthouse, the cenotaph, the dam, the horse), and the
 minimap with the street-name and speed-limit signs; house details (doors, trimmed windows, porches, attic windows,
 dormers, chimneys) on the five house types, shop fronts and sign bands downtown, window ribbons, arched windows,
-cornices, steeples and the clock tower (the map's BDET chunk); rounder trees; the hand-placed parked cars; and the
+cornices, steeples and the clock tower (the map's BDET chunk); the graffiti tags and the two downtown murals (DECO); rounder trees; the hand-placed parked cars; and the
 weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing). Phase 5 (phones): on-screen touch
 buttons (they appear at the first touch; `--touch` shows them on a desktop, worked by the mouse), taps in the menus,
 Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.

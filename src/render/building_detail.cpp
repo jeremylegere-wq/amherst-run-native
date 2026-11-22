@@ -467,6 +467,17 @@ void add_building_details(MeshBuilder& m, const Building& b, int index, float hi
             for (float u = 0.3f; u + 1.2f <= w.L; u += 2.4f) box(m, w.frame(), u, u + 1.2f, -0.4f, 0.0f, h, h + 1.0f, wall, wall);
         }
     }
+    for (const Paint& p : b.paint) {  // graffiti and murals, a touch further out than the windows they cross
+        const Vec3 n{p.nx, p.ny, 0};
+        const std::uint8_t rgb[3] = {p.rgb.r, p.rgb.g, p.rgb.b};
+        for (std::size_t k = 0; k + 8 < p.xyz.size(); k += 9) {
+            Vec3 v[3];
+            for (int c = 0; c < 3; ++c)
+                v[c] = Vec3{p.xyz[k + 3 * c] + p.nx * 0.03f, p.xyz[k + 3 * c + 1] + p.ny * 0.03f, hi + p.xyz[k + 3 * c + 2]};
+            if (dot(cross(v[1] - v[0], v[2] - v[0]), n) < 0) std::swap(v[1], v[2]);
+            m.tri(m.add(v[0], n, rgb), m.add(v[1], n, rgb), m.add(v[2], n, rgb));
+        }
+    }
     if (d.chimney > -2) chimney(m, b, hi);
     if (d.dormers) dormers(m, b, hi);
     steeple(m, b, hi);

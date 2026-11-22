@@ -69,6 +69,13 @@ struct BuildingDetail {
     std::vector<std::uint16_t> shops;    // walls with a shop front
 };
 
+// A shape painted on a wall (DECO: a graffiti tag's plate or letter, a piece of a mural), as world triangles.
+struct Paint {
+    float nx = 0, ny = 0;        // the wall's outward normal
+    Rgb rgb;
+    std::vector<float> xyz;      // 3 corners per triangle; z above the building's highest corner
+};
+
 struct Building {
     float height = 6, roof_height = 0;
     std::uint8_t roof = kFlat, flags = 0;
@@ -76,6 +83,7 @@ struct Building {
     std::vector<Point2> points;  // footprint outline
     std::vector<Tri> tris;       // footprint triangles (counter-clockwise)
     BuildingDetail detail;       // (all defaults when the map has no BDET chunk)
+    std::vector<Paint> paint;    // graffiti and murals (DECO)
 };
 
 enum PolyKind : std::uint8_t { kWater = 0, kPark = 1, kLot = 2, kLandUse = 3 };

@@ -274,6 +274,18 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             if (d.front >= walls || d.wrap >= walls) return false;
             for (auto k : d.shops) if (k >= walls) return false;
         }
+    } else if (tag == "DECO") {
+        const auto n = r.count(24);
+        for (std::uint32_t k = 0; k < n && r.ok(); ++k) {
+            const auto bi = r.get<std::uint32_t>();
+            Paint p;
+            p.nx = r.get<float>(); p.ny = r.get<float>();
+            p.rgb = r.rgb();
+            p.xyz.resize(static_cast<std::size_t>(r.count(36)) * 9);
+            for (float& v : p.xyz) v = r.get<float>();
+            if (bi >= m.buildings.size()) return false;  // (BLDG comes first in the file)
+            m.buildings[bi].paint.push_back(std::move(p));
+        }
     } else if (tag == "PARK") {
         m.parked.resize(r.count(22));
         for (auto& c : m.parked) {
