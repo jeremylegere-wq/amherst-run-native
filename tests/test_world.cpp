@@ -56,6 +56,17 @@ static void unit_checks() {
     CHECK(std::fabs(amr::span_height(sp, 20, 1) - 6) < 1e-5);
     CHECK(std::fabs(amr::span_height(sp, -10, 0) - 3) < 1e-5);
     CHECK(amr::span_height(sp, 20, 6) < 0);  // beside it
+
+    // the drawn ground: corners are the grid's heights, and it is flat within each of a cell's two triangles
+    amr::TerrainGrid t;
+    t.x0 = 0; t.y0 = 0; t.step = 10; t.nx = 2; t.ny = 2;
+    t.h = {0, 4, 2, 10};  // (0,0)=0 (1,0)=4 (0,1)=2 (1,1)=10
+    CHECK(std::fabs(t.mesh_height(0, 0) - 0) < 1e-5);
+    CHECK(std::fabs(t.mesh_height(10, 10) - 10) < 1e-5);
+    CHECK(std::fabs(t.mesh_height(5, 5) - 5) < 1e-5);        // on the diagonal: halfway from 0 to 10
+    CHECK(std::fabs(t.mesh_height(10, 0) - 4) < 1e-5);
+    CHECK(std::fabs(t.mesh_height(8, 2) - (0 + 4 * 0.8f + 6 * 0.2f)) < 1e-5);   // in the (a, b, c) triangle
+    CHECK(std::fabs(t.mesh_height(5, 5) - t.height(5, 5)) > 0.4);              // where it differs from bilinear
 }
 
 static int parity(const char* map_path, const char* golden_path) {

@@ -24,6 +24,15 @@ float TerrainGrid::height(float x, float y) const {
     return top + (c + (d - c) * tx - top) * ty;
 }
 
+float TerrainGrid::mesh_height(float x, float y) const {
+    if (nx == 0 || ny == 0) return 0.0f;
+    const float fx = (x - x0) / step, fy = (y - y0) / step;
+    const int i = static_cast<int>(std::floor(fx)), j = static_cast<int>(std::floor(fy));
+    const float tx = fx - i, ty = fy - j;
+    const float a = node(i, j), b = node(i + 1, j), c = node(i + 1, j + 1), d = node(i, j + 1);
+    return tx >= ty ? a + (b - a) * tx + (c - b) * ty : a + (d - a) * ty + (c - d) * tx;
+}
+
 namespace {
 
 // Reads little-endian values from a chunk, remembering if it ever ran past the end.

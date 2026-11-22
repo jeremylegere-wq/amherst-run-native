@@ -18,6 +18,7 @@
 #include "core/math.h"
 #include "render/gl.h"
 #include "render/shader.h"
+#include "render/chase_camera.h"
 #include "render/map_renderer.h"
 #include "render/palette.h"
 #include "render/target.h"
@@ -110,7 +111,8 @@ int main(int argc, char** argv) {
         return 1;
     }
     SDL_GL_SetSwapInterval(1);
-    std::printf("Amherst Run (native) %s: %s\n", AMR_VERSION, reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+    std::printf("Amherst Run (native) %s: %s, %s\n", AMR_VERSION, reinterpret_cast<const char*>(glGetString(GL_VERSION)),
+                reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
 
     std::string err;
     amr::MapData map;
@@ -136,7 +138,11 @@ int main(int argc, char** argv) {
     const float sx = args.at ? args.at_x : world.map().spawn_x, sy = args.at ? args.at_y : world.map().spawn_y;
     amr::Car car(sx, sy, args.has_heading ? args.heading : world.map().spawn_heading, amr::player_model(0));
     car.z = world.height_at(sx, sy, world.ground(sx, sy));
+    amr::ChaseCamera chase(car);
+    chase.update(car, world, 0.0, true);
+    renderer.warm(sx, sy);
     double frame_ms_total = 0, frame_ms_worst = 0;
+    int worst_frame = 0, worst_built = 0;
     long long tris_total = 0;
 
     Uint64 last = SDL_GetPerformanceCounter();
@@ -161,6 +167,7 @@ int main(int argc, char** argv) {
             car.update(dt, drive, world.on_road(car.x, car.y));
             amr::move_and_slide(car, world, px, py, true);
             amr::settle_height(car, world, dt);
+            chase.update(car, world, dt);
             acc -= 1.0 / kPhysicsHz;
         }
 
@@ -169,13 +176,8 @@ int main(int argc, char** argv) {
         target.bind();
         glClearColor(amr::palette::kFog[0] / 255.0f, amr::palette::kFog[1] / 255.0f, amr::palette::kFog[2] / 255.0f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        amr::Camera cam;
-        const float back = 9.0f;
+        const amr::Camera cam = chase.camera(0.88f);   // the street style's 80 degree view at 16:9
         const float cxf = static_cast<float>(car.x), cyf = static_cast<float>(car.y), czf = static_cast<float>(car.z);
-        cam.eye = {cxf - static_cast<float>(std::cos(car.heading)) * back, cyf - static_cast<float>(std::sin(car.heading)) * back,
-                   czf + 3.6f};
-        cam.eye.z = std::fmax(cam.eye.z, world.height_at(cam.eye.x, cam.eye.y, cam.eye.z) + 1.5f);  // never in a hill
-        cam.target = {cxf, cyf, czf + 1.2f};
         const amr::FrameStats st = renderer.draw(cam, static_cast<float>(kInternalW) / kInternalH);
         amr::Mat4 body = amr::translate({cxf, cyf, czf + static_cast<float>(car.hop_z) + 0.3f}) *
                          amr::rotate_z(static_cast<float>(car.heading));
@@ -189,7 +191,11 @@ int main(int argc, char** argv) {
             const double ms = (SDL_GetPerformanceCounter() - t_frame) * 1000.0 / SDL_GetPerformanceFrequency();
             if (frame > 0) {  // the first frame builds the chunks around the start
                 frame_ms_total += ms;
-                frame_ms_worst = std::fmax(frame_ms_worst, ms);
+                if (ms > frame_ms_worst) {
+                    frame_ms_worst = ms;
+                    worst_frame = frame;
+                    worst_built = st.chunks_built;
+                }
             }
             tris_total += st.triangles;
         }
@@ -203,8 +209,8 @@ int main(int argc, char** argv) {
     }
     int code = 0;
     if (args.frames > 1)
-        std::printf("frames: %d, draw avg %.2f ms, worst %.2f ms, %lld triangles a frame\n", frame, frame_ms_total / (frame - 1),
-                    frame_ms_worst, tris_total / frame);
+        std::printf("frames: %d, draw avg %.2f ms, worst %.2f ms (frame %d, %d chunks built), %lld triangles a frame\n",
+                    frame, frame_ms_total / (frame - 1), frame_ms_worst, worst_frame, worst_built, tris_total / frame);
     if (!args.screenshot.empty()) {
         if (target.save_bmp(args.screenshot)) {
             std::printf("wrote %s (car at %.1f, %.1f, %.1f)\n", args.screenshot.c_str(), car.x, car.y, car.z);

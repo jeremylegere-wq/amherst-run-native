@@ -66,6 +66,9 @@ struct TerrainGrid {
     std::vector<float> h;  // rows south to north, metres (already exaggerated like the Python game)
     float node(int i, int j) const;
     float height(float x, float y) const;  // bilinear, clamped at the edges (terrain.py Terrain.height)
+    // The height of the drawn ground mesh (each cell is two flat triangles split corner (i,j) to (i+1,j+1)), so
+    // things laid on the ground (roads, areas) sit exactly on it even on steep slopes.
+    float mesh_height(float x, float y) const;
 };
 
 struct MapData {

@@ -16,15 +16,17 @@ const char* kVertex = R"(#version 300 es
 layout(location = 0) in vec3 a_pos;
 layout(location = 1) in vec3 a_normal;
 layout(location = 2) in vec4 a_color;
-uniform mat4 u_mvp;
+uniform mat4 u_mvp;     // view-projection
+uniform mat4 u_model;   // identity for the map; places the car
 out vec3 v_normal;
 out vec3 v_world;
 out vec3 v_color;
 void main() {
-    v_world = a_pos;
-    v_normal = a_normal;
+    vec4 w = u_model * vec4(a_pos, 1.0);
+    v_world = w.xyz;
+    v_normal = mat3(u_model) * a_normal;
     v_color = a_color.rgb;
-    gl_Position = u_mvp * vec4(a_pos, 1.0);
+    gl_Position = u_mvp * w;
 }
 )";
 
@@ -37,6 +39,7 @@ in vec3 v_color;
 uniform vec3 u_eye;
 uniform vec3 u_fog;
 uniform vec2 u_fog_range;
+uniform vec3 u_tint;    // white for the map; the car's colour on the white box
 out vec4 o_color;
 void main() {
     vec3 n = normalize(v_normal);
@@ -44,7 +47,7 @@ void main() {
     float lit = n.z > 0.9 ? 1.0 : (d > 0.25 ? 0.95 : 0.66);   // flat ground stays its own colour
     float dist = distance(v_world, u_eye);
     float fog = floor(clamp((dist - u_fog_range.x) / (u_fog_range.y - u_fog_range.x), 0.0, 1.0) * 4.0) / 4.0;
-    o_color = vec4(mix(v_color * lit, u_fog, fog), 1.0);
+    o_color = vec4(mix(v_color * u_tint * lit, u_fog, fog), 1.0);
 }
 )";
 
@@ -84,6 +87,66 @@ Vec3 mitre(const std::vector<Point2>& p, std::size_t i) {
 
 }  // namespace
 
+std::vector<RoofFace> roof_faces(const std::vector<Point2>& pts, float h, int kind, float rh, bool across) {
+    std::vector<RoofFace> out;
+    const std::size_t n = pts.size();
+    if (rh <= 0 || n < 3) return out;
+    if (kind == kCone) {  // any outline: one face from each wall up to a point over the middle
+        float cx = 0, cy = 0;
+        for (const auto& p : pts) { cx += p.x; cy += p.y; }
+        cx /= n; cy /= n;
+        for (std::size_t k = 0; k < n; ++k) {
+            RoofFace f;
+            f.n = 3;
+            f.v[0] = {pts[k].x, pts[k].y, h};
+            f.v[1] = {pts[(k + 1) % n].x, pts[(k + 1) % n].y, h};
+            f.v[2] = {cx, cy, h + rh};
+            out.push_back(f);
+        }
+        return out;
+    }
+    if ((kind != kGable && kind != kHip && kind != kMansard) || n != 4) return out;
+    const float cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4, cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+    const float e1x = pts[1].x - pts[0].x, e1y = pts[1].y - pts[0].y, e2x = pts[2].x - pts[1].x, e2y = pts[2].y - pts[1].y;
+    const float l1 = std::hypot(e1x, e1y), l2 = std::hypot(e2x, e2y);
+    if (l1 < 0.1f || l2 < 0.1f) return out;
+    float ux, uy, hl, hw;  // the ridge runs along u: the long side, or the short way for a cross gable
+    if ((l1 >= l2) != across) { ux = e1x / l1; uy = e1y / l1; hl = l1 / 2; hw = l2 / 2; }
+    else { ux = e2x / l2; uy = e2y / l2; hl = l2 / 2; hw = l1 / 2; }
+    const float vx = -uy, vy = ux, top = h + rh;
+    auto P = [&](float a, float b, float z) { return Vec3{cx + ux * a + vx * b, cy + uy * a + vy * b, z}; };
+    auto face = [&](std::initializer_list<Vec3> vs) {
+        RoofFace f;
+        f.n = 0;
+        for (const Vec3& v : vs) f.v[f.n++] = v;
+        out.push_back(f);
+    };
+    if (kind == kGable) {
+        face({P(-hl, -hw, h), P(hl, -hw, h), P(hl, 0, top), P(-hl, 0, top)});
+        face({P(hl, hw, h), P(-hl, hw, h), P(-hl, 0, top), P(hl, 0, top)});
+        face({P(hl, -hw, h), P(hl, hw, h), P(hl, 0, top)});
+        face({P(-hl, hw, h), P(-hl, -hw, h), P(-hl, 0, top)});
+    } else if (kind == kHip) {
+        const float r = std::max(0.0f, hl - hw);
+        face({P(-hl, -hw, h), P(hl, -hw, h), P(r, 0, top), P(-r, 0, top)});
+        face({P(hl, hw, h), P(-hl, hw, h), P(-r, 0, top), P(r, 0, top)});
+        face({P(hl, -hw, h), P(hl, hw, h), P(r, 0, top)});
+        face({P(-hl, hw, h), P(-hl, -hw, h), P(-r, 0, top)});
+    } else {  // mansard: steep skirt, flat top
+        const float i = std::min({rh * 0.55f, hw * 0.5f, hl * 0.5f});
+        const float eave[4][2] = {{-hl, -hw}, {hl, -hw}, {hl, hw}, {-hl, hw}};
+        const float crown[4][2] = {{-(hl - i), -(hw - i)}, {hl - i, -(hw - i)}, {hl - i, hw - i}, {-(hl - i), hw - i}};
+        for (int k = 0; k < 4; ++k) {
+            const int k1 = (k + 1) % 4;
+            face({P(eave[k][0], eave[k][1], h), P(eave[k1][0], eave[k1][1], h), P(crown[k1][0], crown[k1][1], top),
+                  P(crown[k][0], crown[k][1], top)});
+        }
+        face({P(crown[0][0], crown[0][1], top), P(crown[1][0], crown[1][1], top), P(crown[2][0], crown[2][1], top),
+              P(crown[3][0], crown[3][1], top)});
+    }
+    return out;
+}
+
 MapRenderer::MapRenderer(const World& world) : world_(world) {
     std::string err;
     program_ = make_program(kVertex, kFragment, err);
@@ -92,9 +155,11 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
         return;
     }
     u_mvp_ = glGetUniformLocation(program_, "u_mvp");
+    u_model_ = glGetUniformLocation(program_, "u_model");
     u_eye_ = glGetUniformLocation(program_, "u_eye");
     u_fog_ = glGetUniformLocation(program_, "u_fog");
     u_fog_range_ = glGetUniformLocation(program_, "u_fog_range");
+    u_tint_ = glGetUniformLocation(program_, "u_tint");
     const auto& m = world_.map();
     water_level_.resize(m.polys.size(), 0.0f);
     for (std::size_t i = 0; i < m.polys.size(); ++i) {
@@ -103,6 +168,16 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
         water_level_[i] = lo;
     }
     bucket();
+    MeshBuilder b;  // the unit box for draw_box: -0.5..0.5 in x and y, 0..1 in z, white (tinted by the caller's colour)
+    const Vec3 c[8] = {{-.5f, -.5f, 0}, {.5f, -.5f, 0}, {.5f, .5f, 0}, {-.5f, .5f, 0},
+                       {-.5f, -.5f, 1}, {.5f, -.5f, 1}, {.5f, .5f, 1}, {-.5f, .5f, 1}};
+    const std::uint8_t white[3] = {255, 255, 255};
+    b.quad(c[4], c[5], c[6], c[7], white);  // top
+    b.quad(c[0], c[1], c[5], c[4], white);  // sides
+    b.quad(c[1], c[2], c[6], c[5], white);
+    b.quad(c[2], c[3], c[7], c[6], white);
+    b.quad(c[3], c[0], c[4], c[7], white);
+    box_.upload(b);
 }
 
 MapRenderer::~MapRenderer() {
@@ -152,14 +227,22 @@ void MapRenderer::bucket() {
     }
 }
 
-MapRenderer::Chunk& MapRenderer::chunk(int cx, int cy, FrameStats& stats) {
-    auto& slot = chunks_[key(cx, cy)];
-    if (!slot) {
-        slot = std::make_unique<Chunk>();
-        build(cx, cy, *slot);
-        ++stats.chunks_built;
-    }
-    return *slot;
+MapRenderer::Chunk* MapRenderer::chunk(int cx, int cy, FrameStats& stats, bool may_build) {
+    auto it = chunks_.find(key(cx, cy));
+    if (it != chunks_.end()) return it->second.get();
+    if (!may_build) return nullptr;
+    auto c = std::make_unique<Chunk>();
+    build(cx, cy, *c);
+    ++stats.chunks_built;
+    return (chunks_[key(cx, cy)] = std::move(c)).get();
+}
+
+void MapRenderer::warm(float x, float y) {
+    FrameStats stats;
+    const float reach = kDrawDist + kChunk * 0.71f;
+    for (int cx = static_cast<int>(std::floor((x - reach) / kChunk)); cx <= static_cast<int>(std::floor((x + reach) / kChunk)); ++cx)
+        for (int cy = static_cast<int>(std::floor((y - reach) / kChunk)); cy <= static_cast<int>(std::floor((y + reach) / kChunk)); ++cy)
+            if (std::hypot((cx + 0.5f) * kChunk - x, (cy + 0.5f) * kChunk - y) <= reach) chunk(cx, cy, stats, true);
 }
 
 void MapRenderer::build(int cx, int cy, Chunk& out) {
@@ -192,7 +275,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
         }
     }
 
-    MeshBuilder o, s;
+    MeshBuilder o, s, ar;
     const Vec3 up{0, 0, 1};
     auto items = items_.find(key(cx, cy));
     if (items != items_.end()) {
@@ -210,7 +293,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                     const float x1 = a.x + (b.x - a.x) * t1, y1 = a.y + (b.y - a.y) * t1;
                     if (!inside((x0 + x1) / 2, (y0 + y1) / 2)) continue;
                     const Vec3 n0 = (ma * (1 - t0) + mb * t0) * hw, n1 = (ma * (1 - t1) + mb * t1) * hw;
-                    auto at = [&](float x, float y) { return v3(x, y, world_.ground(x, y) + lift); };
+                    auto at = [&](float x, float y) { return v3(x, y, T.mesh_height(x, y) + lift); };
                     const Vec3 l0 = at(x0 + n0.x, y0 + n0.y), r0 = at(x0 - n0.x, y0 - n0.y);
                     const Vec3 l1 = at(x1 + n1.x, y1 + n1.y), r1 = at(x1 - n1.x, y1 - n1.y);
                     const auto i0 = o.add(r0, up, col), i1 = o.add(r1, up, col), i2 = o.add(l1, up, col), i3 = o.add(l0, up, col);
@@ -235,17 +318,22 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 s.quad(r0 + drop, r1 + drop, r1, r0, edge);           // right edge
                 s.quad(l1 + drop, l0 + drop, l0, l1, edge);           // left edge
                 s.quad(l0 + drop, l1 + drop, r1 + drop, r0 + drop, edge);  // underside
-            } else if (it.kind == 2) {  // a building: walls from the lowest ground up, flat top for now
+            } else if (it.kind == 2) {  // a building: sits on its highest corner, walls reach down to the land
                 const Building& bd = m.buildings[it.index];
                 const auto& p = bd.points;
-                float lo = 1e9f, hi = -1e9f, area = 0;
+                float lo = 1e9f, hi = -1e9f, area = 0, cxm = 0, cym = 0;
                 for (std::size_t k = 0; k < p.size(); ++k) {
                     const float gz = world_.ground(p[k].x, p[k].y);
                     lo = std::min(lo, gz);
                     hi = std::max(hi, gz);
                     const Point2 q = p[(k + 1) % p.size()];
                     area += p[k].x * q.y - q.x * p[k].y;
+                    cxm += p[k].x;
+                    cym += p[k].y;
                 }
+                cxm /= p.size();
+                cym /= p.size();
+                hi = std::max(hi, world_.ground(cxm, cym));
                 const float base = lo - 0.3f, top = hi + bd.height;
                 const std::uint8_t wall[3] = {bd.wall.r, bd.wall.g, bd.wall.b};
                 for (std::size_t k = 0; k < p.size(); ++k) {
@@ -253,12 +341,30 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                     if (area < 0) std::swap(a, b);  // walls face out whichever way the outline runs
                     s.quad({a.x, a.y, base}, {b.x, b.y, base}, {b.x, b.y, top}, {a.x, a.y, top}, wall);
                 }
-                std::uint8_t roof[3];
-                if (bd.roof == kFlat) shade(wall, 0.82f, roof);
-                else { roof[0] = bd.roof_colour.r; roof[1] = bd.roof_colour.g; roof[2] = bd.roof_colour.b; }
-                const std::uint32_t first = static_cast<std::uint32_t>(s.verts.size());
-                for (const auto& q : p) s.add({q.x, q.y, top}, up, roof);
-                for (const Tri& t : bd.tris) s.tri(first + t.a, first + t.b, first + t.c);
+                const std::vector<RoofFace> faces = roof_faces(p, top, bd.roof, bd.roof_height, (bd.flags & 1) != 0);
+                if (faces.empty()) {  // flat roof (or a pitched roof on an outline that is not four-cornered)
+                    std::uint8_t roof[3];
+                    shade(wall, 0.82f, roof);
+                    const std::uint32_t first = static_cast<std::uint32_t>(s.verts.size());
+                    for (const auto& q : p) s.add({q.x, q.y, top}, up, roof);
+                    for (const Tri& t : bd.tris) s.tri(first + t.a, first + t.b, first + t.c);
+                } else {
+                    const std::uint8_t roof[3] = {bd.roof_colour.r, bd.roof_colour.g, bd.roof_colour.b};
+                    const Vec3 pivot{cxm, cym, top};
+                    for (const RoofFace& f : faces) {
+                        Vec3 n = normalize(cross(f.v[1] - f.v[0], f.v[2] - f.v[0]));
+                        Vec3 mid{0, 0, 0};
+                        for (int k = 0; k < f.n; ++k) mid = mid + f.v[k];
+                        mid = mid * (1.0f / f.n);
+                        const bool outward = dot(n, mid - pivot) >= 0;
+                        if (!outward) n = n * -1.0f;
+                        const bool upright = std::fabs(n.z) < 0.05f;  // a gable end: wall colour
+                        const std::uint8_t* col = upright ? wall : roof;
+                        std::uint32_t idx[4];
+                        for (int k = 0; k < f.n; ++k) idx[k] = s.add(f.v[outward ? k : f.n - 1 - k], n, col);
+                        for (int k = 1; k + 1 < f.n; ++k) s.tri(idx[0], idx[k], idx[k + 1]);
+                    }
+                }
             } else {  // an area triangle (land use, park, lot, water), split to follow the ground
                 const Poly& P = m.polys[it.index];
                 const Tri t = P.tris[it.sub];
@@ -283,17 +389,17 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                         continue;
                     }
                     if (!inside((q.a.x + q.b.x + q.c.x) / 3, (q.a.y + q.b.y + q.c.y) / 3)) continue;
-                    auto z = [&](Point2 u) { return water ? level + lift : world_.ground(u.x, u.y) + lift; };
-                    const auto i0 = o.add({q.a.x, q.a.y, z(q.a)}, up, col);
-                    const auto i1 = o.add({q.b.x, q.b.y, z(q.b)}, up, col);
-                    const auto i2 = o.add({q.c.x, q.c.y, z(q.c)}, up, col);
-                    o.tri(i0, i1, i2);
+                    auto z = [&](Point2 u) { return water ? level + lift : T.mesh_height(u.x, u.y) + lift; };
+                    const auto i0 = ar.add({q.a.x, q.a.y, z(q.a)}, up, col);
+                    const auto i1 = ar.add({q.b.x, q.b.y, z(q.b)}, up, col);
+                    const auto i2 = ar.add({q.c.x, q.c.y, z(q.c)}, up, col);
+                    ar.tri(i0, i1, i2);
                 }
             }
         }
     }
-    // areas first, roads after them in the same mesh: depth decides (roads are lifted a little higher)
     out.ground.upload(g);
+    out.areas.upload(ar);
     out.overlay.upload(o);
     out.solid.upload(s);
 }
@@ -313,12 +419,15 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     glUniform3f(u_eye_, cam.eye.x, cam.eye.y, cam.eye.z);
     glUniform3f(u_fog_, palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f);
     glUniform2f(u_fog_range_, 70.0f, kDrawDist);
+    const Mat4 identity;
+    glUniformMatrix4fv(u_model_, 1, GL_FALSE, identity.m);
+    glUniform3f(u_tint_, 1, 1, 1);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
 
     const Vec3 fwd = normalize(Vec3{cam.target.x - cam.eye.x, cam.target.y - cam.eye.y, 0});
     const float reach = kDrawDist + kChunk * 0.71f;
-    std::vector<Chunk*> visible;
+    std::vector<std::pair<float, std::pair<int, int>>> wanted;  // (distance, chunk) in view
     const int c0x = static_cast<int>(std::floor((cam.eye.x - reach) / kChunk));
     const int c1x = static_cast<int>(std::floor((cam.eye.x + reach) / kChunk));
     const int c0y = static_cast<int>(std::floor((cam.eye.y - reach) / kChunk));
@@ -329,8 +438,13 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
             const float d = std::hypot(mx, my);
             if (d > reach) continue;
             if (mx * fwd.x + my * fwd.y < -kChunk * 0.71f) continue;  // wholly behind the camera
-            visible.push_back(&chunk(cx, cy, stats));
+            wanted.push_back({d, {cx, cy}});
         }
+    std::sort(wanted.begin(), wanted.end());
+    std::vector<Chunk*> visible;
+    for (const auto& w : wanted)  // the nearest missing ones are built first; far ones may wait a frame or two
+        if (Chunk* c = chunk(w.second.first, w.second.second, stats, stats.chunks_built < kBuildsPerFrame))
+            visible.push_back(c);
     for (Chunk* c : visible) {
         c->ground.draw();
         c->solid.draw();
@@ -338,6 +452,12 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     }
     glEnable(GL_POLYGON_OFFSET_FILL);  // areas and roads lie on the ground: pull them forward a little
     glPolygonOffset(-1.0f, -4.0f);
+    glDepthMask(GL_FALSE);             // areas first, without depth, so the roads after them always cover them
+    for (Chunk* c : visible) {         // (big flat area triangles can float a little above a creased slope)
+        c->areas.draw();
+        stats.triangles += c->areas.count() / 3;
+    }
+    glDepthMask(GL_TRUE);
     for (Chunk* c : visible) {
         c->overlay.draw();
         stats.triangles += c->overlay.count() / 3;
@@ -348,20 +468,14 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
 }
 
 void MapRenderer::draw_box(const Mat4& model, const std::uint8_t rgb[3]) {
-    // a placeholder: five quads moved by `model` on the CPU and uploaded each frame (phase 1's real car replaces it)
-    MeshBuilder b;
-    const Vec3 c[8] = {{-.5f, -.5f, 0}, {.5f, -.5f, 0}, {.5f, .5f, 0}, {-.5f, .5f, 0},
-                       {-.5f, -.5f, 1}, {.5f, -.5f, 1}, {.5f, .5f, 1}, {-.5f, .5f, 1}};
-    auto P = [&](int i) { return transform_point(model, c[i]); };
-    b.quad(P(4), P(5), P(6), P(7), rgb);
-    b.quad(P(0), P(1), P(5), P(4), rgb);
-    b.quad(P(1), P(2), P(6), P(5), rgb);
-    b.quad(P(2), P(3), P(7), P(6), rgb);
-    b.quad(P(3), P(0), P(4), P(7), rgb);
-    Mesh tmp(b);
     glUseProgram(program_);
     glUniformMatrix4fv(u_mvp_, 1, GL_FALSE, vp_.m);
-    tmp.draw();
+    glUniformMatrix4fv(u_model_, 1, GL_FALSE, model.m);
+    glUniform3f(u_tint_, rgb[0] / 255.0f, rgb[1] / 255.0f, rgb[2] / 255.0f);
+    box_.draw();
+    const Mat4 identity;
+    glUniformMatrix4fv(u_model_, 1, GL_FALSE, identity.m);
+    glUniform3f(u_tint_, 1, 1, 1);
 }
 
 }  // namespace amr
