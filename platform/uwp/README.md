@@ -1,36 +1,62 @@
-# Xbox One (Developer Mode) / Windows package (UWP)
+# Xbox (Developer Mode)
 
-No Windows PC is needed: CI (`.github/workflows/ci.yml`, job `xbox`, on GitHub's Windows runner) builds the game
-for UWP with SDL2 (from source) and ANGLE (Microsoft's ANGLE.WindowsStore 2.1.14 package: OpenGL ES 3 on
-Direct3D 11), signs it with a test certificate made fresh for each build, and keeps the result as the artifact
-`amherst-run-xbox-uwp`:
+> [!WARNING]
+> **Untested on a console.** The package is built and signed by CI but has not yet been played on an Xbox.
 
-    AmherstRun_0.1.0.0_x64_Test/AmherstRun_0.1.0.0_x64.msix       the game (with the map)
-    AmherstRun_0.1.0.0_x64_Test/AmherstRun_0.1.0.0_x64.cer        its test certificate
-    AmherstRun_0.1.0.0_x64_Test/Dependencies/x64/Microsoft.VCLibs.x64.14.00.appx   the C++ runtime it needs
+Amherst Run runs on an Xbox One or Series console in **Developer Mode** as a homebrew UWP app. You don't need a
+Windows PC: GitHub's Windows runner builds the package, and you install it from any computer's web browser through
+the console's Device Portal.
 
-**Untested on a console**: nobody has played it on an Xbox yet. `INSTALL.txt` (copied into the artifact) is the step-by-step guide: Developer Mode,
-installing through the Device Portal, setting the app type to Game, the controls, and where the log is.
+## Install
 
-Made for the console:
-- the package's version comes from the CI run number (0.1.<run>.0), so a newer build installs over an older one;
-- the picture keeps a TV-safe border by default (pause menu SCREEN: FULL / SAFE, saved);
-- a log (`log.txt` in the app's LocalState, through the Device Portal's file explorer) with the graphics driver and
-  any error, and a message box for start-up failures; B is the game's (pause / back), not the console's.
+Download `amherst-run-xbox-uwp.zip` from the [latest release](https://github.com/jeremylegere-wq/amherst-run-native/releases),
+unzip it, and follow [`INSTALL.txt`](INSTALL.txt), which is also inside the zip. In short:
 
-## Installing it on an Xbox One
+1. **Developer Mode.** Install the *Xbox Dev Mode* app from the Store and activate it with a code from a Partner Center
+   developer account. The console restarts into Dev Home.
+2. **Device Portal.** In Dev Home, turn on Remote Access and set a user name and password, then open the address it
+   shows in a browser.
+3. **Add the game.** Go to *My games & apps > Add*, choose the `.msix`, and add
+   `Microsoft.VCLibs.x64.14.00.appx` as a dependency.
+4. **Make it a Game.** In Dev Home, open the app's details and set its type to **Game**. Games get much more memory
+   and a bigger share of the CPU and GPU than apps.
 
-1. Developer Mode: install the "Xbox Dev Mode" app from the Store on the console, sign up for a Partner Center
-   developer account to get an activation code, enter it, and restart into Developer Mode (Microsoft's
-   "Xbox One Developer Mode activation" guide).
-2. In Dev Home turn on Remote Access (the Device Portal) with a user name and password; it shows the address,
-   e.g. `https://192.168.x.x:11443`.
-3. On any computer's browser open that address (accept the console's own certificate warning), then
-   Home -> My games & apps -> Add: pick the `.msix`, then add `Microsoft.VCLibs.x64.14.00.appx` as a dependency
-   (and the `.cer` if it asks for a certificate). Install.
-4. In Dev Home, select Amherst Run, press View -> View details, and set its type from App to **Game** (games get more
-   memory and the larger share of the CPU and GPU). Launch it from Dev Home.
+Each build has a higher package version (`0.1.<CI run>.0`), so a newer build installs over an older one. If the console
+refuses an update, uninstall the old version in the Device Portal first.
 
-## Building it yourself (Windows, Visual Studio 2022 with the UWP C++ tools)
+## What is in the package
 
-See the comment at the top of `CMakeLists.txt` and the CI job's steps. `make_logos.py` redraws the tile pictures.
+| File | Purpose |
+|---|---|
+| `AmherstRun.exe` | The game, built as a UWP app. |
+| `SDL2.dll` | SDL2 2.32.10, built from source with its UWP project. |
+| `libEGL.dll`, `libGLESv2.dll` | Microsoft's ANGLE for Windows Store 2.1.14: OpenGL ES 3 on Direct3D 11. |
+| `assets/amherst.amr` | The baked map. |
+
+## Made for the console
+
+- **TV-safe picture.** A 5% border by default, so a TV that crops its edges keeps the HUD. Change it under
+  *Pause > Screen*; the choice is saved.
+- **Controller first.** Everything works from the pad, and B is the game's own back button, not the console's.
+- **A log on the console.** `log.txt` records the graphics driver, the screen size, the connected pads and any error.
+  It's in the Device Portal's file explorer under *LocalAppData > AmherstRun_… > LocalState > AmherstRun >
+  AmherstRun*, next to the save file. Start-up failures also show a message box.
+
+## Building it
+
+CI does this on every push: the `xbox` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). On a
+Windows machine with Visual Studio 2022 and its UWP C++ tools, follow the same steps:
+
+1. Build `SDL2-2.32.10/VisualC-WinRT/SDL-UWP.vcxproj` (Release, x64).
+2. Unpack the `ANGLE.WindowsStore` 2.1.14 NuGet package.
+3. Configure this folder with the WindowsStore generator:
+
+   ```bat
+   cmake -S platform/uwp -B build-uwp -G "Visual Studio 17 2022" -A x64 ^
+     -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0 ^
+     -DSDL_DIR=<SDL2 source> -DSDL_LIB_DIR=<SDL-UWP output> -DANGLE_DIR=<unpacked ANGLE> -DMAP_FILE=<amherst.amr>
+   ```
+
+4. Build `build-uwp/AmherstRun.vcxproj` with MSBuild, setting `AppxPackageSigningEnabled` and your certificate.
+
+`make_logos.py` redraws the tile and splash pictures in `Assets/`.

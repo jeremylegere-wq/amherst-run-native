@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <array>
+#include <random>
 #include <memory>
 #include <unordered_map>
 #include <string>
@@ -16,6 +17,7 @@
 #include "game/missions.h"
 #include "game/save.h"
 #include "game/tagging.h"
+#include "sim/ai.h"
 #include "render/car_mesh.h"
 #include "render/chase_camera.h"
 #include "render/building_detail.h"
@@ -49,6 +51,9 @@ struct Options {
     bool touch = false;         // show the on-screen touch buttons from the start (the mouse works them on a desktop)
     bool low_quality = false;   // phones: a shorter draw distance, no see-through shadows (the pause menu switches)
     bool tag_test = false;      // test runs: park and hold TAG (the screenshots of a tag being sprayed)
+    bool autopilot = false;     // player 1 drives itself along the roads like traffic (demos, recordings)
+    double pace = 1.25;         // ... at this fraction of the posted limits
+    std::string record_dir;     // test runs: save every second frame here as a .bmp (the README's GIFs)
     bool weather_set = false, quality_set = false;  // given on the command line: they win over the saved choice
     int screen = -1;            // the screen fit: 0 full, 1 a TV-safe border (-1: the platform's default)
     bool no_music = false;      // start with the music off (the pause menu switches it)
@@ -117,6 +122,9 @@ private:
     std::unique_ptr<Tagging> tagging_;                 // the full game's tag spots (game/tagging.h)
     std::vector<std::unique_ptr<Mesh>> tag_meshes_;    // the player's tags, per spot, once sprayed
     double spray_sound_t_ = 0;
+    std::unique_ptr<AICar> pilot_;  // --autopilot: a traffic driver that steers player 1
+    std::mt19937 pilot_rng_{7};
+    CarInput autopilot(Car& car, double dt);
     std::string save_path_;     // "" : no saving (test runs, --no-save, no place for app data)
     SaveData save_;             // what was loaded, kept up to date
     bool loaded_ = false;

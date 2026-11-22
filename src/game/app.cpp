@@ -177,6 +177,7 @@ void App::start(int players, int battle) {
 // The start grid (game/twoplayer.py _spawn): one player at the start; two side by side; three or four in two rows,
 // the second 7 m behind.
 void App::spawn_players() {
+    pilot_.reset();
     cars_.clear();
     cams_.clear();
     streets_.assign(players_, StreetTracker{});
@@ -253,6 +254,7 @@ void App::step(double dt) {
         CarInput drive{c.throttle, c.brake, c.steer, c.handbrake, c.bumper};
         fire[i] = c.fire;
         if (opt_.frames >= 0) drive = CarInput{!opt_.tag_test, false, 0.0, opt_.tag_test, false};  // tests: straight on
+        if (opt_.autopilot && i == 0 && !battle_) drive = autopilot(car, dt);
         bool tag = c.tag || (opt_.frames >= 0 && opt_.tag_test);
         if (battle_) battle_->adjust(i, drive.throttle, drive.brake, drive.steer, drive.handbrake, drive.bumper);
         if (town_->state() != TownState::Playing && i == 0) drive = CarInput{false, false, 0.0, true, false};
@@ -699,6 +701,11 @@ void App::draw(int frame) {
             ms_worst_ = std::max(ms_worst_, ms);
         }
     }
+    if (!opt_.record_dir.empty() && frame % 2 == 0) {  // a recording: every second frame (15 a second)
+        char name[64];
+        std::snprintf(name, sizeof name, "/frame_%05d.bmp", frame / 2);
+        target_.save_bmp(opt_.record_dir + name);
+    }
     int ww = 0, wh = 0;
     SDL_GL_GetDrawableSize(window_, &ww, &wh);
     target_.present(ww, wh, safe_screen_ ? kSafeMargin : 0.0f);
@@ -1094,6 +1101,49 @@ void App::refresh_tag(int i) {
                                                          static_cast<double>(sp.passes) / Tagging::kPieceSprays));
     else if (sp.owner == Crew::Rival)
         tag_meshes_[i] = std::make_unique<Mesh>(tag_mesh(sp, static_cast<unsigned>(i) * 104729u + 11u, Crew::Rival));
+}
+
+// --autopilot: a hidden traffic driver (sim/ai.h drive_traffic) sits in player 1's car: it follows the road graph,
+// slows for corners and cars ahead, keeps to the junction rules, and its throttle, brake and steering drive the car.
+CarInput App::autopilot(Car& car, double dt) {
+    if (!pilot_) {
+        pilot_ = std::make_unique<AICar>(car.x, car.y, car.heading);
+        int best = -1;
+        double best_score = 1e18;
+        for (int e : graph_.edges_near(car.x, car.y, 40.0)) {  // the lane nearest the car, going its way
+            const auto& ed = graph_.edges[e];
+            const double d = std::hypot(graph_.lane_point(e, 0.5 * ed.length).x - car.x, graph_.lane_point(e, 0.5 * ed.length).y - car.y);
+            const double turn = std::fabs(wrap_angle(graph_.lane_point(e, 0.5 * ed.length).heading - car.heading));
+            const double score = d + turn * 30.0;
+            if (score < best_score) { best_score = score; best = e; }
+        }
+        pilot_->edge = best;
+        pilot_->nxt = best >= 0 ? graph_.choose_next(best, pilot_rng_) : -1;
+        pilot_->pace = opt_.pace;
+        if (best >= 0) {  // set the car down in that lane, pointing along it
+            double bs = 0, bd = 1e18;
+            for (double s = 0; s <= graph_.edges[best].length; s += 1.0) {
+                const LanePoint lp = graph_.lane_point(best, s);
+                const double d = std::hypot(lp.x - car.x, lp.y - car.y);
+                if (d < bd) { bd = d; bs = s; }
+            }
+            const LanePoint lp = graph_.lane_point(best, bs);
+            car.x = lp.x;
+            car.y = lp.y;
+            car.heading = lp.heading;
+            car.vx = car.vy = 0;
+            car.z = world_.height_at(static_cast<float>(car.x), static_cast<float>(car.y), world_.ground(static_cast<float>(car.x), static_cast<float>(car.y)));
+        }
+    }
+    if (pilot_->edge < 0) return CarInput{false, true, 0.0, false, false};
+    pilot_->x = car.x; pilot_->y = car.y; pilot_->z = car.z;
+    pilot_->heading = car.heading; pilot_->vx = car.vx; pilot_->vy = car.vy;
+    std::vector<const Car*> others;
+    if (town_)
+        for (const auto& c : town_->cars()) others.push_back(c.get());
+    auto next = [&](int eid) { return graph_.choose_next(eid, pilot_rng_); };
+    drive_traffic(*pilot_, graph_, others, next, dt, &junctions_, town_ ? town_->time() : 0.0);
+    return CarInput{pilot_->throttle, pilot_->brake, pilot_->steer, false, false};
 }
 
 // Keep the save up to date: the full game's cash and tags (from the game in progress; the last ones otherwise),

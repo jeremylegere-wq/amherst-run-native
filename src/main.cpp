@@ -16,6 +16,8 @@
 //   amherst-run --no-save | --save-dir DIR        neither load nor save progress (cash, tags, weather, quality) |
 //                                                 keep the save in DIR (test runs too)
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
+//   amherst-run --autopilot [--pace 1.25]          player 1 drives itself along the roads like traffic (demos)
+//   amherst-run --frames 300 --record DIR          save every second frame in DIR (frame_00000.bmp...: GIFs)
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 //                                                   (add --menu to picture the start screen instead)
 #include <SDL.h>
@@ -93,6 +95,12 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
             a.weather = amr::weather_index(argv[++i]);
             if (a.weather < 0) return false;
             a.weather_set = true;
+        } else if (!std::strcmp(s, "--autopilot")) {
+            a.autopilot = true;
+        } else if (!std::strcmp(s, "--pace") && more) {
+            a.pace = std::atof(argv[++i]);
+        } else if (!std::strcmp(s, "--record") && more) {
+            a.record_dir = argv[++i];
         } else if (!std::strcmp(s, "--tag-test")) {
             a.tag_test = true;
         } else if (!std::strcmp(s, "--touch")) {
