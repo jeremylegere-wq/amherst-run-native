@@ -8,6 +8,7 @@
 //   amherst-run --map path/to/amherst.amr        another map file (default: assets/amherst.amr beside the game)
 //   amherst-run --traffic N                      civilian cars around you downtown (default 16, 0 for none)
 //   amherst-run --no-cops | --heat H             no police at all | start with a wanted level (0-4)
+//   amherst-run --no-train | --train-in S        no train | the first train after S seconds (default 50-90)
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 //                                                   (add --menu to picture the start screen instead)
@@ -68,6 +69,10 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
             if (!a.battle) return false;
         } else if (!std::strcmp(s, "--menu")) {
             a.menu = true;
+        } else if (!std::strcmp(s, "--no-train")) {
+            a.trains = false;
+        } else if (!std::strcmp(s, "--train-in") && more) {
+            a.train_in = std::atof(argv[++i]);
         } else if (!std::strcmp(s, "--no-cops")) {
             a.cops = false;
         } else if (!std::strcmp(s, "--heat") && more) {
@@ -98,7 +103,7 @@ int main(int argc, char** argv) {
     std::string map_path;
     if (!parse(argc, argv, opt, map_path)) return 2;
     if (map_path.empty()) map_path = default_map();
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {  // (audio starts later, if it can)
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }

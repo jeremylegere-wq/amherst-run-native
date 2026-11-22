@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/input.h"
+#include "core/sound.h"
 #include "game/battle.h"
 #include "game/missions.h"
 #include "render/chase_camera.h"
@@ -18,6 +19,7 @@
 #include "sim/junctions.h"
 #include "sim/roadgraph.h"
 #include "sim/town.h"
+#include "sim/train.h"
 #include "world/world.h"
 
 namespace amr {
@@ -33,6 +35,8 @@ struct Options {
     int traffic = 16;
     bool cops = true;
     double heat = 0;
+    bool trains = true;
+    double train_in = -1;       // tests: the first train comes after this many seconds
 };
 
 class App {
@@ -51,6 +55,7 @@ private:
     void draw(int frame);
     void draw_view(int i, int x, int y, int w, int h);
     void draw_cars();
+    void draw_train();
     void hud_single();
     void hud_split(int i, int x, int y, int w, int h);
     void hud_battle(int i, int x, int y, int w, int h);
@@ -70,9 +75,11 @@ private:
     RenderTarget target_;
     Hud hud_;
     Input input_;
+    Sound sound_;
     std::unique_ptr<Town> town_;
     std::unique_ptr<MissionManager> jobs_;
     std::unique_ptr<Battle> battle_;
+    std::unique_ptr<Train> train_;
     int battle_kind_ = 0;
     unsigned battle_seed_ = 1;
     std::vector<std::unique_ptr<Car>> cars_;  // the human players

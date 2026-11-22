@@ -55,6 +55,7 @@ public:
     double target_y() const { return ty_; }
     const std::string& target_label() const { return target_label_; }
     static constexpr double kFinish = 15.0;
+    std::vector<const char*> sounds;  // effects to play (game/sfx.py names); the game takes them each frame
 
 private:
     void use_item(int i, Car& car);

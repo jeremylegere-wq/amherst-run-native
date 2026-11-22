@@ -258,6 +258,11 @@ void MapRenderer::bucket() {
         const Prop& p = m.props[i];
         add_box(p.x, p.y, p.x, p.y, {4, i, 0});
     }
+    for (int w = 0; w < static_cast<int>(m.rails.size()); ++w)
+        for (int s = 0; s + 1 < static_cast<int>(m.rails[w].size()); ++s) {
+            const Point2 a = m.rails[w][s], b = m.rails[w][s + 1];
+            add_box(std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x), std::max(a.y, b.y), {5, w, s});
+        }
     for (int i = 0; i < static_cast<int>(m.polys.size()); ++i) {
         const auto& P = m.polys[i];
         for (int t = 0; t < static_cast<int>(P.tris.size()); ++t) {
@@ -405,6 +410,29 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                         for (int k = 0; k < f.n; ++k) idx[k] = s.add(f.v[outward ? k : f.n - 1 - k], n, col);
                         for (int k = 1; k + 1 < f.n; ++k) s.tri(idx[0], idx[k], idx[k + 1]);
                     }
+                }
+            } else if (it.kind == 5) {  // a rail segment: the bed, and two rails on it
+                const auto& line = m.rails[it.index];
+                const Point2 a = line[it.sub], b = line[it.sub + 1];
+                const Vec3 ma = mitre(line, it.sub), mb = mitre(line, it.sub + 1);
+                const int n = std::max(1, static_cast<int>(std::ceil(std::hypot(b.x - a.x, b.y - a.y) / kPiece)));
+                for (int k = 0; k < n; ++k) {
+                    const float t0 = static_cast<float>(k) / n, t1 = static_cast<float>(k + 1) / n;
+                    const float x0 = a.x + (b.x - a.x) * t0, y0 = a.y + (b.y - a.y) * t0;
+                    const float x1 = a.x + (b.x - a.x) * t1, y1 = a.y + (b.y - a.y) * t1;
+                    if (!inside((x0 + x1) / 2, (y0 + y1) / 2)) continue;
+                    const Vec3 n0 = ma * (1 - t0) + mb * t0, n1 = ma * (1 - t1) + mb * t1;
+                    auto strip = [&](float off, float hw, float lift, const std::uint8_t* col) {
+                        auto at = [&](float x, float y) { return v3(x, y, T.mesh_height(x, y) + lift); };
+                        const Vec3 l0 = at(x0 + n0.x * (off + hw), y0 + n0.y * (off + hw)), r0 = at(x0 + n0.x * (off - hw), y0 + n0.y * (off - hw));
+                        const Vec3 l1 = at(x1 + n1.x * (off + hw), y1 + n1.y * (off + hw)), r1 = at(x1 + n1.x * (off - hw), y1 + n1.y * (off - hw));
+                        const auto i0 = o.add(r0, up, col), i1 = o.add(r1, up, col), i2 = o.add(l1, up, col), i3 = o.add(l0, up, col);
+                        o.tri(i0, i1, i2);
+                        o.tri(i0, i2, i3);
+                    };
+                    strip(0.0f, 1.6f, 0.06f, palette::kRailBed);
+                    strip(0.72f, 0.06f, 0.22f, palette::kRail);
+                    strip(-0.72f, 0.06f, 0.22f, palette::kRail);
                 }
             } else if (it.kind == 4) {  // a prop
                 const Prop& p = m.props[it.index];

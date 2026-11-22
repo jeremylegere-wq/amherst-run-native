@@ -226,6 +226,14 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             t.x = r.get<double>(); t.y = r.get<double>();
             t.label = r.str();
         }
+    } else if (tag == "RAIL") {
+        m.rails.resize(r.count(4));
+        for (auto& w : m.rails) r.points(w);
+    } else if (tag == "TRAN") {
+        m.train_line.resize(r.count(16));
+        for (auto& p : m.train_line) { p.x = r.get<double>(); p.y = r.get<double>(); }
+        m.train_lo = r.get<double>();
+        m.train_hi = r.get<double>();
     } else if (tag == "SPRT") {
         m.sprint_targets.resize(r.count(20));
         for (auto& t : m.sprint_targets) {

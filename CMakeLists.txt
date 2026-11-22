@@ -16,6 +16,7 @@ find_library(GLES3_LIB NAMES GLESv2 GLESv3 REQUIRED)
 
 add_library(amr_core STATIC
   src/core/input.cpp
+  src/core/sound.cpp
   src/render/target.cpp
   src/render/shader.cpp
   src/render/mesh.cpp
@@ -29,6 +30,7 @@ add_library(amr_core STATIC
   src/sim/ai.cpp
   src/sim/junctions.cpp
   src/sim/town.cpp
+  src/sim/train.cpp
   src/game/missions.cpp
   src/game/items.cpp
   src/game/battle.cpp
@@ -76,3 +78,12 @@ add_executable(test_items tests/test_items.cpp)
 target_link_libraries(test_items PRIVATE amr_core)
 add_test(NAME items COMMAND test_items "${AMR_MAP}" "${AMR_GOLDEN}")
 set_tests_properties(items PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_train tests/test_train.cpp)
+target_link_libraries(test_train PRIVATE amr_core)
+add_test(NAME train COMMAND test_train "${AMR_MAP}" "${AMR_GOLDEN}")
+set_tests_properties(train PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_sound tests/test_sound.cpp)
+target_link_libraries(test_sound PRIVATE amr_core)
+add_test(NAME sound COMMAND test_sound)

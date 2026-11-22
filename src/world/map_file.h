@@ -130,6 +130,9 @@ struct MapData {
     std::vector<TourSpot> tour_spots;
     std::vector<CivicAddress> addresses;
     std::vector<TourSpot> sprint_targets;  // VS race finishes (game/battle.py sprint_targets)
+    std::vector<std::vector<Point2>> rails;    // rail ways (drawn as rail beds)
+    std::vector<GraphNode> train_line;         // the train's line (game/train.py stitch)
+    double train_lo = 0, train_hi = 0;         // the stretch of it a train runs (metres along the line)
     int prop_kind(const std::string& name) const;  // index of a kind, -1 if the map has none of it
 };
 

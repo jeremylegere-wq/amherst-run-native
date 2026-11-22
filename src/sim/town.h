@@ -40,6 +40,7 @@ public:
     const std::vector<std::unique_ptr<AICar>>& cars() const { return cars_; }
     int local_target(const Car& player);   // how many civilian cars to keep around: fewer where there is little road
     void add_heat(double amount);
+    void hit_player(double impact) { hurt(impact); }  // something else hit the player (the train)
     void set_cops(bool on);                // cop-free mode off/on (off stands the police down at once)
     double player_power() const;           // 1.0 undamaged, down to 0.65 at 100 damage
     int stars() const;

@@ -26,6 +26,14 @@ inline constexpr std::uint8_t kHudStarOff[3] = {70, 70, 80};
 inline constexpr std::uint8_t kHudBar[3] = {40, 40, 52};
 inline constexpr std::uint8_t kHudDamage[3] = {232, 64, 48};
 inline constexpr std::uint8_t kHudRed[3] = {240, 60, 60};
+inline constexpr std::uint8_t kRailBed[3] = {120, 96, 80};
+inline constexpr std::uint8_t kRail[3] = {236, 236, 240};
+inline constexpr std::uint8_t kFreight[6][3] = {{196, 92, 64}, {130, 144, 168}, {96, 156, 120},
+                                                {214, 190, 120}, {110, 126, 200}, {170, 110, 80}};
+inline constexpr std::uint8_t kLocoRed[3] = {176, 44, 44};
+inline constexpr std::uint8_t kLocoStripe[3] = {240, 200, 60};
+inline constexpr std::uint8_t kUnderframe[3] = {40, 40, 48};
+inline constexpr std::uint8_t kCabGlass[3] = {70, 100, 170};
 inline constexpr std::uint8_t kTreeLit[3][3] = {{98, 206, 72}, {150, 216, 58}, {72, 192, 112}};
 inline constexpr std::uint8_t kTreeShade[3][3] = {{44, 138, 66}, {72, 150, 52}, {34, 124, 88}};
 inline constexpr std::uint8_t kTrunk[3] = {124, 80, 46};

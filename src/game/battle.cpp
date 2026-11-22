@@ -92,12 +92,16 @@ void Battle::roulette(Racer& r, double dt) {
     if (r.roulette <= 0.0) return;
     const int before = static_cast<int>(r.roulette * 12);
     r.roulette -= dt;
-    if (static_cast<int>(std::max(0.0, r.roulette) * 12) != before) r.shown = static_cast<Item>(before % kItemCount);
+    if (static_cast<int>(std::max(0.0, r.roulette) * 12) != before) {
+        r.shown = static_cast<Item>(before % kItemCount);
+        sounds.push_back("tick");
+    }
     if (r.roulette <= 0.0) {
         r.roulette = 0.0;
         r.item = pick_item(rng_);
         r.shown = r.item;
         if (r.item == Item::Triple) r.orbit = 3;
+        sounds.push_back("item");
     }
 }
 
@@ -108,11 +112,13 @@ void Battle::use_item(int i, Car& car) {
         case Item::Puck:
         case Item::Seeker:
             shots_.push_back(fire_shot(r.item, car, i));
+            sounds.push_back("launch");
             r.item = Item::None;
             break;
         case Item::Triple:
             if (r.orbit > 0) {
                 shots_.push_back(fire_shot(Item::Puck, car, i));
+                sounds.push_back("launch");
                 --r.orbit;
             }
             if (r.orbit <= 0) r.item = Item::None;
@@ -125,10 +131,12 @@ void Battle::use_item(int i, Car& car) {
             car.boost_t = std::max(car.boost_t, kTurboTime);
             car.vx += car.fx() * 4.0;
             car.vy += car.fy() * 4.0;
+            sounds.push_back("boost");
             r.item = Item::None;
             break;
         case Item::Ghost:
             r.ghost = kGhostTime;
+            sounds.push_back("boost");
             r.item = Item::None;
             break;
     }
@@ -138,10 +146,14 @@ void Battle::use_item(int i, Car& car) {
 bool Battle::hurt(int i, bool spin) {
     Racer& r = racers_[i];
     if (r.ghost > 0.0 || r.safe > 0.0 || r.out) return false;
-    if (spin) r.spin = kSpinTime;
+    if (spin) {
+        r.spin = kSpinTime;
+        sounds.push_back("spin");
+    }
     r.safe = kHitSafe;
     if (mode_ == Mode::Balloon) {
         --r.balloons;
+        sounds.push_back("pop");
         if (r.balloons <= 0) r.out = true;
     }
     return true;
@@ -192,7 +204,9 @@ void Battle::update(double dt, std::vector<Car*>& cars, const std::vector<bool>&
             const bool shielded = racers_[j].orbit && j != s.owner;
             if (!racers_[j].out && (j != s.owner || s.age > kOwnerSafe * 2) && !shielded) rivals.push_back({j, cars[j]});
         }
+        const int bounces = s.bounces;
         const int res = step_shot(s, world_, dt, rivals);
+        if (s.bounces > bounces) sounds.push_back("ricochet");
         if (res < 0) continue;
         if (res > 0) {
             hurt(res - 1, true);
@@ -211,7 +225,8 @@ void Battle::update(double dt, std::vector<Car*>& cars, const std::vector<bool>&
         }
         for (const Car* c : town)
             if ((c->x - s.x) * (c->x - s.x) + (c->y - s.y) * (c->y - s.y) < 4.0) blocked = true;
-        if (!blocked) keep.push_back(s);
+        if (blocked) sounds.push_back("ricochet");
+        else keep.push_back(s);
     }
     shots_ = std::move(keep);
     std::vector<Slick> still;  // slicks: whoever drives over one spins out
@@ -246,6 +261,7 @@ void Battle::update(double dt, std::vector<Car*>& cars, const std::vector<bool>&
                 }
             }
         }
+    const bool racing = winner_ == -2;
     if (winner_ == -2) {
         if (mode_ == Mode::Balloon) {
             int alive = 0, last = -1;
@@ -257,6 +273,7 @@ void Battle::update(double dt, std::vector<Car*>& cars, const std::vector<bool>&
                 if (std::hypot(cars[i]->x - tx_, cars[i]->y - ty_) < kFinish) { winner_ = i; break; }
         }
     }
+    if (racing && winner_ != -2) sounds.push_back("win");
     if (banner_left_ > 0) {
         banner_left_ -= dt;
         if (banner_left_ <= 0) banner_.clear();

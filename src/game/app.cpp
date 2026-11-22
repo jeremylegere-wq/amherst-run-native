@@ -105,6 +105,8 @@ void App::start(int players, int battle) {
     if (players_ == 1) town_->add_heat(opt_.heat);
     town_->set_free_roam(players_ > 1);
     jobs_ = std::make_unique<MissionManager>(world_, graph_, *town_);
+    train_ = std::make_unique<Train>(world_.map(), 1, opt_.trains);
+    if (opt_.train_in >= 0) train_->set_wait(opt_.train_in);
     spawn_players();
 }
 
@@ -194,12 +196,22 @@ void App::step(double dt) {
             spawn_players();
         }
     }
+    train_->update(dt);  // the train: solid, it shoves cars off the line (and a hard hit hurts in the full game)
+    if (train_->active()) {
+        for (int i = 0; i < players_; ++i) {
+            const double hit = train_->push_out(*cars_[i]);
+            if (players_ == 1 && hit > 3.0) town_->hit_player(hit);
+        }
+        for (const auto& c : town_->cars()) train_->push_out(*c);
+    }
     if (battle_) {
         std::vector<Car*> cars;
         for (auto& c : cars_) cars.push_back(c.get());
         std::vector<const Car*> town;
         for (const auto& c : town_->cars()) town.push_back(c.get());
         battle_->update(dt, cars, fire, town);
+        for (const char* name : battle_->sounds) sound_.play(name);
+        battle_->sounds.clear();
     }
     for (int i = 0; i < players_; ++i) cams_[i].update(*cars_[i], world_, dt);
 }
@@ -273,6 +285,26 @@ void App::draw_cars() {
                            c->police ? palette::kPoliceBody : palette::kTraffic[c->colour]);
 }
 
+// The train's blocks (game/render3d.py _draw_train_unit): a dark underframe, then a red locomotive with a yellow
+// stripe and the cab windows on the leading block, or a freight car body.
+void App::draw_train() {
+    for (const TrainUnit& u : train_->units()) {
+        const double g = world_.ground(static_cast<float>(u.x), static_cast<float>(u.y));
+        const double len = Train::kUnitLen - 0.16, w = 2 * Train::kHalfW;
+        renderer_.draw_box(box_model(u.x, u.y, g + 0.3, u.heading, len, 2.3, 0.7f), palette::kUnderframe);
+        if (u.kind == TrainUnit::Freight) {
+            renderer_.draw_box(box_model(u.x, u.y, g + 1.0, u.heading, len, w, 3.2f), palette::kFreight[(u.idx / 2) % 6]);
+            continue;
+        }
+        renderer_.draw_box(box_model(u.x, u.y, g + 1.0, u.heading, len, w, 2.5f), palette::kLocoRed);
+        renderer_.draw_box(box_model(u.x, u.y, g + 2.2, u.heading, len + 0.04, w + 0.04, 0.4f), palette::kLocoStripe);
+        if (u.kind == TrainUnit::Cab) {
+            const double fx = std::cos(u.heading) * len / 4, fy = std::sin(u.heading) * len / 4;
+            renderer_.draw_box(box_model(u.x + fx, u.y + fy, g + 3.5, u.heading, len / 2, w - 0.2, 1.1f), palette::kCabGlass);
+        }
+    }
+}
+
 void App::draw_view(int i, int x, int y, int w, int h) {
     glViewport(x, kH - y - h, w, h);  // (OpenGL counts rows from the bottom)
     glEnable(GL_SCISSOR_TEST);
@@ -282,6 +314,7 @@ void App::draw_view(int i, int x, int y, int w, int h) {
     const FrameStats st = renderer_.draw(cams_[i].camera(kFovy), static_cast<float>(w) / h);
     tris_total_ += st.triangles;
     draw_cars();
+    draw_train();
     if (battle_) draw_battle_things(i);
     if (mode_ == Mode::Single) {
         for (const Marker& mk : jobs_->markers()) {  // job beacons: a glowing column and a pad on the ground
