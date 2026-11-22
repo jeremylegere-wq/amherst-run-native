@@ -25,11 +25,13 @@ uniform mat4 u_model;   // identity for the map; places the car
 out vec3 v_normal;
 out vec3 v_world;
 out vec3 v_color;
+flat out float v_flags;  // the alpha byte: bit 7 creases get ink, low bits the draw distance (render/mesh.h)
 void main() {
     vec4 w = u_model * vec4(a_pos, 1.0);
     v_world = w.xyz;
     v_normal = mat3(u_model) * a_normal;
     v_color = a_color.rgb;
+    v_flags = floor(a_color.a * 255.0 + 0.5);
     gl_Position = u_mvp * w;
 }
 )";
@@ -40,22 +42,28 @@ precision highp float;
 in vec3 v_normal;
 in vec3 v_world;
 in vec3 v_color;
+flat in float v_flags;
 uniform vec3 u_eye;
 uniform vec3 u_fog;
 uniform vec2 u_fog_range;
 uniform vec3 u_tint;    // white for the map; the car's colour on the white box
 uniform float u_inked;  // 1 for buildings, cars and props (they get ink outlines), 0 for the ground, roads, areas
 uniform vec4 u_grade;   // the weather's colour grade: multipliers, then desaturation
-out vec4 o_color;
+layout(location = 0) out vec4 o_color;
+layout(location = 1) out vec4 o_normal;  // for the ink pass: the surface's normal, and 1 where creases get ink
 void main() {
+    float dist = distance(v_world, u_eye);
+    float reach = mod(v_flags, 128.0);
+    if (reach < 127.0 && dist > reach * 2.0) discard;  // a small detail beyond its distance: the wall shows instead
     vec3 n = normalize(v_normal);
     float d = dot(n, normalize(vec3(-0.45, 0.40, 0.80)));   // the sun (game/render3d.py LIGHT, map y south)
-    float lit = n.z > 0.9 ? 1.0 : (d > 0.25 ? 0.95 : 0.66);   // flat ground stays its own colour
-    float dist = distance(v_world, u_eye);
+    // two-tone cel shading: the sunny side keeps its colour, the shadow side drops to a cool blue-violet tone
+    vec3 lit = n.z > 0.9 ? vec3(1.0) : (d > 0.25 ? vec3(0.97) : vec3(0.60, 0.62, 0.80));
     float fog = floor(clamp((dist - u_fog_range.x) / (u_fog_range.y - u_fog_range.x), 0.0, 1.0) * 4.0) / 4.0;
     vec3 c = min(v_color * u_tint * lit * u_grade.rgb, vec3(1.0));
-    c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), u_grade.a);
+    c = clamp(mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), u_grade.a), 0.0, 1.0);  // (a < 0: more saturated)
     o_color = vec4(mix(c, u_fog, fog), u_inked);
+    o_normal = vec4(n * 0.5 + 0.5, (u_inked > 0.5 && v_flags >= 128.0) ? 1.0 : 0.0);
 }
 )";
 
@@ -67,7 +75,7 @@ void main() { gl_Position = u_mvp * vec4(a_pos, 1.0); }
 const char* kShadowFragment = R"(#version 300 es
 precision mediump float;
 uniform vec4 u_rgba;
-out vec4 o_color;
+layout(location = 0) out vec4 o_color;
 void main() { o_color = u_rgba; }
 )";
 
@@ -547,7 +555,9 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                             int apex = 0;  // the gable's top corner; the other two are the eaves
                             for (int k = 1; k < 3; ++k) if (f.v[k].z > f.v[apex].z) apex = k;
                             const Vec3 tri[3] = {f.v[(apex + 1) % 3], f.v[(apex + 2) % 3], f.v[apex]};
+                            s.alpha = flags::within(70.0f);
                             add_attic_window(s, tri, n);
+                            s.alpha = flags::kDefault;
                         }
                     }
                 }
@@ -583,7 +593,9 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 const bool own = p.colour.r || p.colour.g || p.colour.b;
                 const std::uint8_t mine[3] = {p.colour.r, p.colour.g, p.colour.b};
                 if (kind == "tree") {
+                    s.alpha = flags::kNoCrease;  // trees: an outline, no lines across the canopy's facets
                     tree(s, p.x, p.y, g, p.h, p.r, p.c, W.snow);
+                    s.alpha = flags::kDefault;
                     const float ox = p.x + sdx * p.h * 0.6f, oy = p.y + sdy * p.h * 0.6f, rr = p.r * 0.9f;
                     std::vector<std::pair<float, float>> oct8;
                     for (int k2 = 0; k2 < 8; ++k2) oct8.push_back({ox + rr * std::cos(k2 * 0.7853982f), oy + rr * std::sin(k2 * 0.7853982f)});
@@ -777,6 +789,8 @@ void MapRenderer::draw_shadows(const std::vector<float>& tris, const std::uint8_
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);  // keep the ink mask in alpha as it is
     glDepthMask(GL_FALSE);
     glDisable(GL_CULL_FACE);
+    static const GLenum kColourOnly[2] = {GL_COLOR_ATTACHMENT0, GL_NONE};  // keep the normals (the ink pass's)
+    glDrawBuffers(2, kColourOnly);
     glEnable(GL_STENCIL_TEST);  // each pixel once: overlapping shadows do not get darker
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
@@ -784,6 +798,8 @@ void MapRenderer::draw_shadows(const std::vector<float>& tris, const std::uint8_
     glPolygonOffset(-1.0f, -8.0f);
     if (!tris.empty()) glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(tris.size() / 3));
     for (Chunk* c : visible_) c->shadows.draw();  // the buildings' and trees' (same program: position only)
+    static const GLenum kBoth[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+    glDrawBuffers(2, kBoth);
     glDisable(GL_POLYGON_OFFSET_FILL);
     glDisable(GL_STENCIL_TEST);
     glDepthMask(GL_TRUE);

@@ -18,7 +18,7 @@ struct Weather {
     bool shadows;                        // see-through hard shadows at all
     std::uint8_t shadow[4];              // their colour (RGBA)
     float shadow_dx, shadow_dy;          // metres of shadow per metre of height (low golden sun: long, to the east)
-    float grade[3], desat;               // colour grade: multipliers, then desaturation 0..1
+    float grade[3], desat;               // colour grade: multipliers, then desaturation 0..1 (below 0: punchier)
     int snowfall;                        // flakes on screen
     bool hide_horizon;                   // thick fog: no hills
     bool snow;                           // snow on the grass, parks, roofs and trees
@@ -27,7 +27,7 @@ struct Weather {
 // clang-format off
 inline constexpr Weather kWeathers[] = {
     {"clear",    {16, 58, 196},   {104, 184, 248}, 32, {160, 206, 244}, 0.55f, {126, 176, 226}, {66, 154, 126}, 9,
-     true,  {24, 22, 72, 120}, 0.45f, -0.4f, {1.0f, 1.0f, 1.0f},    0.0f,  0,   false, false},
+     true,  {24, 22, 72, 120}, 0.45f, -0.4f, {1.0f, 1.0f, 1.0f},    -0.15f, 0,  false, false},
     {"overcast", {108, 122, 140}, {178, 186, 196}, 12, {172, 180, 190}, 0.85f, {140, 150, 162}, {92, 116, 108}, 0,
      false, {0, 0, 0, 0},      0.45f, -0.4f, {0.92f, 0.94f, 0.98f}, 0.30f, 0,   false, false},
     {"fog",      {186, 194, 202}, {208, 214, 220}, 6,  {206, 212, 218}, 1.7f,  {206, 212, 218}, {206, 212, 218}, 0,

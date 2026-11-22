@@ -14,11 +14,24 @@ struct Vertex {
     std::uint8_t r, g, b, a;
 };
 
+// What a vertex's alpha byte means to the map shader: bit 7 set = this surface's creases get ink lines (trees leave
+// it clear: their faceted canopies get only an outline); the low 7 bits = how far away it is still drawn, in 2 m
+// steps (127: always). Small details (windows, doors, shop fronts, paint) use it to vanish with distance, like the
+// Python game's close-range details, instead of turning into noise at 320x180.
+namespace flags {
+inline constexpr std::uint8_t kDefault = 255;   // inked creases, always drawn
+inline constexpr std::uint8_t kNoCrease = 127;  // trees
+inline constexpr std::uint8_t within(float metres) {  // inked creases, drawn up to this far
+    return static_cast<std::uint8_t>(128 + (metres / 2 < 126 ? static_cast<int>(metres / 2) : 126));
+}
+}  // namespace flags
+
 struct MeshBuilder {
     std::vector<Vertex> verts;
     std::vector<std::uint32_t> idx;
+    std::uint8_t alpha = flags::kDefault;  // given to every vertex added (see flags)
     std::uint32_t add(Vec3 p, Vec3 n, const std::uint8_t rgb[3]) {
-        verts.push_back({p.x, p.y, p.z, n.x, n.y, n.z, rgb[0], rgb[1], rgb[2], 255});
+        verts.push_back({p.x, p.y, p.z, n.x, n.y, n.z, rgb[0], rgb[1], rgb[2], alpha});
         return static_cast<std::uint32_t>(verts.size() - 1);
     }
     void tri(std::uint32_t a, std::uint32_t b, std::uint32_t c) { idx.insert(idx.end(), {a, b, c}); }

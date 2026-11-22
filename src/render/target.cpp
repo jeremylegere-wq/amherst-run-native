@@ -22,6 +22,7 @@ void main() {  // one triangle over the whole picture, from the vertex number al
 const char* kInkFragment = R"(#version 300 es
 precision highp float;
 uniform sampler2D u_color;
+uniform sampler2D u_normal;
 uniform highp sampler2D u_depth;
 uniform vec2 u_planes;      // near, far
 uniform float u_until;      // metres: no ink beyond
@@ -49,7 +50,25 @@ void main() {
     // a silhouette (something much nearer next door) or a fold (the depth's second difference: a corner)
     float jump = max(max(dc - dl, dc - dr), max(dc - du, dc - dd));
     float fold = max(abs(dl + dr - 2.0 * dc), abs(du + dd - 2.0 * dc));
-    if (jump > 0.06 * dc + 0.3 || fold > 0.025 * dc + 0.12) o_color = vec4(u_ink, 1.0);
+    if (jump > 0.06 * dc + 0.3 || fold > 0.025 * dc + 0.12) { o_color = vec4(u_ink, 1.0); return; }
+    // close up the outline is two pixels thick (something within 30 m two pixels away, much nearer than here)
+    for (int i = 0; i < 4; ++i) {
+        ivec2 q = p + 2 * n[i];
+        if (q.x < 0 || q.y < 0 || q.x >= size.x || q.y >= size.y) continue;
+        float dq = metres(q);
+        if (dq < 30.0 && dc - dq > 0.06 * dc + 0.3 && texelFetch(u_color, q, 0).a > 0.5) { o_color = vec4(u_ink, 1.0); return; }
+    }
+    // a crease: the surface turns (a building's corner, a roof's edge, a porch, a car's panels), drawn on the nearer
+    // side so the line stays one pixel; only where both sides want creases inked (not across a tree's facets)
+    vec4 nc = texelFetch(u_normal, p, 0);
+    if (nc.a < 0.5) return;
+    vec3 vc = nc.xyz * 2.0 - 1.0;
+    float dn[4] = float[4](dr, dl, du, dd);
+    for (int i = 0; i < 4; ++i) {
+        vec4 nn = texelFetch(u_normal, p + n[i], 0);
+        if (nn.a < 0.5) continue;
+        if (dot(vc, nn.xyz * 2.0 - 1.0) < 0.82 && dc <= dn[i] + 0.02) { o_color = vec4(u_ink, 1.0); return; }
+    }
 }
 )";
 
@@ -80,6 +99,17 @@ RenderTarget::RenderTarget(int width, int height) : w_(width), h_(height) {
         glDeleteFramebuffers(1, &fbo_);
         fbo_ = 0;
     }
+    normal_ = make_color(w_, h_);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, normal_, 0);
+    {
+        static const GLenum kBoth[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+        glDrawBuffers(2, kBoth);
+    }
+    if (fbo_ && glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        glDeleteFramebuffers(1, &fbo_);
+        fbo_ = 0;
+    }
     color2_ = make_color(w_, h_);
     glGenFramebuffers(1, &fbo2_);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo2_);
@@ -102,12 +132,18 @@ RenderTarget::~RenderTarget() {
     if (color2_) glDeleteTextures(1, &color2_);
     if (fbo_) glDeleteFramebuffers(1, &fbo_);
     if (depth_) glDeleteTextures(1, &depth_);
+    if (normal_) glDeleteTextures(1, &normal_);
     if (color_) glDeleteTextures(1, &color_);
 }
 
 void RenderTarget::bind() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
     glViewport(0, 0, w_, h_);
+}
+
+void RenderTarget::clear_normals() {
+    static const GLfloat kNone[4] = {0.5f, 0.5f, 1.0f, 0.0f};
+    glClearBufferfv(GL_COLOR, 1, kNone);
 }
 
 void RenderTarget::ink(float znear, float zfar, float ink_until, const float rgb[3], bool enabled) {
@@ -120,8 +156,11 @@ void RenderTarget::ink(float znear, float zfar, float ink_until, const float rgb
     glBindTexture(GL_TEXTURE_2D, color_);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, depth_);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, normal_);
     glUniform1i(glGetUniformLocation(ink_prog_, "u_color"), 0);
     glUniform1i(glGetUniformLocation(ink_prog_, "u_depth"), 1);
+    glUniform1i(glGetUniformLocation(ink_prog_, "u_normal"), 2);
     glUniform2f(glGetUniformLocation(ink_prog_, "u_planes"), znear, zfar);
     glUniform1f(glGetUniformLocation(ink_prog_, "u_until"), ink_until);
     glUniform3f(glGetUniformLocation(ink_prog_, "u_ink"), rgb[0], rgb[1], rgb[2]);

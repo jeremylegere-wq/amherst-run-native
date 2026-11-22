@@ -19,7 +19,9 @@ outlines, see-through shadows, the landmark props (the border lighthouse, the ce
 minimap with the street-name and speed-limit signs; house details (doors, trimmed windows, porches, attic windows,
 dormers, chimneys) on the five house types, shop fronts and sign bands downtown, window ribbons, arched windows,
 cornices, steeples and the clock tower (the map's BDET chunk); the graffiti tags and the two downtown murals (DECO); rounder trees; the hand-placed parked cars; and the
-weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing). Phase 5 (phones): on-screen touch
+weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing); ink on every crease (a normal buffer),
+thicker outlines up close, cool-tinted cel shadows, small details that fade with distance, puffy cartoon clouds, a
+view that widens at speed, and the street style's sticker HUD (outlined italic text, slanted bars and chevrons). Phase 5 (phones): on-screen touch
 buttons (they appear at the first touch; `--touch` shows them on a desktop, worked by the mouse), taps in the menus,
 Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.
 

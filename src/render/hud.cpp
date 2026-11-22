@@ -25,8 +25,12 @@ const char* kFragment = R"(#version 300 es
 precision mediump float;
 in vec3 v_color;
 uniform float u_alpha;
-out vec4 o_color;
-void main() { o_color = vec4(v_color, u_alpha); }
+layout(location = 0) out vec4 o_color;
+layout(location = 1) out vec4 o_normal;  // (the scene's normal buffer, when the sky is drawn there: no surface)
+void main() {
+    o_color = vec4(v_color, u_alpha);
+    o_normal = vec4(0.5, 0.5, 1.0, 0.0);
+}
 )";
 
 // 3x5 glyphs, one row per entry, bit 2 = left column.
@@ -102,17 +106,39 @@ void Hud::vgrad(int x, int y, int w, int h, const std::uint8_t top[3], const std
 int Hud::text_width(const std::string& s, int scale) const { return s.empty() ? 0 : static_cast<int>(s.size()) * 4 * scale - scale; }
 
 void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], int scale, bool shadow) {
-    for (int pass = shadow ? 0 : 1; pass < 2; ++pass) {  // shadow first, one dot down and right
-        const std::uint8_t* col = pass == 0 ? kShadow : rgb;
-        const int off = pass == 0 ? scale : 0;
+    const bool italic = shadow && scale >= 2;
+    auto draw = [&](int ox, int oy, const std::uint8_t* col) {
         int cx = x;
         for (char c : s) {
             if (const Glyph* g = glyph(c))
-                for (int row = 0; row < 5; ++row)
+                for (int row = 0; row < 5; ++row) {
+                    const int lean = italic ? (4 - row) * scale / 2 : 0;  // upper rows sit further right
                     for (int bit = 0; bit < 3; ++bit)
-                        if (g->rows[row] & (4 >> bit)) rect(cx + bit * scale + off, y + row * scale + off, scale, scale, col);
+                        if (g->rows[row] & (4 >> bit)) rect(cx + bit * scale + ox + lean, y + row * scale + oy, scale, scale, col);
+                }
             cx += 4 * scale;
         }
+    };
+    if (shadow) {
+        const int k = scale >= 3 ? 2 : 1;  // the ink outline's thickness
+        draw(k + 1, k + 1, kShadow);       // drop shadow
+        for (int dx = -k; dx <= k; dx += k)
+            for (int dy = -k; dy <= k; dy += k)
+                if (dx || dy) draw(dx, dy, kShadow);
+    }
+    draw(0, 0, rgb);
+}
+
+void Hud::slant(int x, int y, int w, int h, int lean, const std::uint8_t rgb[3]) {
+    const float x0 = static_cast<float>(x), y0 = static_cast<float>(y), x1 = x0 + w, y1 = y0 + h;
+    tri(x0 + lean, y0, x1 + lean, y0, x1, y1, rgb);
+    tri(x0 + lean, y0, x1, y1, x0, y1, rgb);
+}
+
+void Hud::ellipse(float cx, float cy, float rx, float ry, const std::uint8_t rgb[3]) {
+    for (int k = 0; k < 16; ++k) {
+        const float a0 = k * 0.3926991f, a1 = (k + 1) * 0.3926991f;
+        tri(cx, cy, cx + rx * std::cos(a0), cy + ry * std::sin(a0), cx + rx * std::cos(a1), cy + ry * std::sin(a1), rgb);
     }
 }
 

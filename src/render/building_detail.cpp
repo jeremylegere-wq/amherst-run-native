@@ -23,7 +23,9 @@ constexpr std::uint8_t kClockFace[3] = {252, 250, 236};
 constexpr std::uint8_t kBrick[3] = {176, 72, 56};
 constexpr std::uint8_t kChimneyCap[3] = {70, 60, 58};
 
-constexpr float kWallPiece = 12.0f;  // long walls get their window ribbons in pieces this long (render3d WALL_PIECE)
+constexpr float kWallPiece = 12.0f;
+// how far away the small details are still drawn (metres; the Python game: houses 45, shops 70, windows 90, murals 160)
+constexpr float kHouseReach = 70.0f, kShopReach = 100.0f, kWindowReach = 130.0f, kPaintReach = 160.0f;  // long walls get their window ribbons in pieces this long (render3d WALL_PIECE)
 
 // A quad a-b-c-d turned so its front faces `out`.
 void face(MeshBuilder& m, Vec3 a, Vec3 b, Vec3 c, Vec3 d, Vec3 out, const std::uint8_t rgb[3]) {
@@ -460,16 +462,23 @@ void add_building_details(MeshBuilder& m, const Building& b, int index, float hi
         if (w.L < 0.5f) continue;
         if (d.plinth_h > 0) w.rect(m, 0, w.L, low, std::min(h, d.plinth_h), &d.plinth.r, 0.03f);
         const bool shop = std::find(d.shops.begin(), d.shops.end(), static_cast<std::uint16_t>(k)) != d.shops.end();
+        // small things fade out with distance (like the Python game's close-range details): beyond these the wall
+        // is plain, which reads far better at 320x180 than a scatter of one-pixel windows
+        m.alpha = flags::within(kHouseReach);
         if (d.house != kNotHouse) house_wall(m, b, index, k, w, low);
+        m.alpha = flags::within(kShopReach);
         if (shop) shop_front(m, b, index, w);
-        else if (d.house == kNotHouse && !is_arched && h > 3.5f) ribbons(m, w, h);
+        m.alpha = flags::within(kWindowReach);
+        if (!shop && d.house == kNotHouse && !is_arched && h > 3.5f) ribbons(m, w, h);
         if (is_arched) arched(m, w, h);
+        m.alpha = flags::kDefault;
         if (d.flags & kCornice) w.rect(m, 0, w.L, h - 0.75f, h - 0.25f, kCorniceRgb, 0.1f);
         if (d.landmark == kArmoury) {  // battlements along the top of every wall
             const std::uint8_t wall[3] = {b.wall.r, b.wall.g, b.wall.b};
             for (float u = 0.3f; u + 1.2f <= w.L; u += 2.4f) box(m, w.frame(), u, u + 1.2f, -0.4f, 0.0f, h, h + 1.0f, wall, wall);
         }
     }
+    m.alpha = flags::within(kPaintReach);
     for (const Paint& p : b.paint) {  // graffiti and murals, a touch further out than the windows they cross
         const Vec3 n{p.nx, p.ny, 0};
         const std::uint8_t rgb[3] = {p.rgb.r, p.rgb.g, p.rgb.b};
@@ -481,6 +490,7 @@ void add_building_details(MeshBuilder& m, const Building& b, int index, float hi
             m.tri(m.add(v[0], n, rgb), m.add(v[1], n, rgb), m.add(v[2], n, rgb));
         }
     }
+    m.alpha = flags::kDefault;
     if (d.chimney > -2) chimney(m, b, hi);
     if (d.dormers) dormers(m, b, hi);
     steeple(m, b, hi);

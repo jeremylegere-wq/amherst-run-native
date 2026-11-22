@@ -91,6 +91,24 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
         hi = std::max(hi, world_.ground(cx / b.points.size(), cy / b.points.size()));
         for (const ClockFace& f : clock_faces(b, hi)) clock_faces_.push_back(f);
     }
+    {  // the clouds (game/render3d.py _prep_clouds): nine clusters of 4-6 ellipses round the sky
+        unsigned seed = 11;
+        auto rnd = [&](double a, double b) {
+            seed = seed * 1664525u + 1013904223u;
+            return a + (b - a) * ((seed >> 8) & 0xFFFF) / 65535.0;
+        };
+        for (int k = 0; k < 9; ++k) {
+            Cloud c;
+            c.az = k * 2 * 3.14159265358979 / 9 + rnd(-0.25, 0.25);
+            c.elev = rnd(26, 74);
+            const double size = rnd(0.7, 1.35);
+            const int n = 4 + static_cast<int>(rnd(0, 2.99));
+            for (int b = 0; b < n; ++b)
+                c.blobs.push_back({static_cast<float>(rnd(-30, 30) * size), static_cast<float>(rnd(-6, 3) * size),
+                                   static_cast<float>(rnd(13, 24) * size), static_cast<float>(rnd(7, 12) * size)});
+            clouds_.push_back(std::move(c));
+        }
+    }
     renderer_.set_weather(opt_.weather);
     renderer_.set_low_quality(opt_.low_quality);
     if (opt_.touch) input_.touch().set_mouse(true);
@@ -396,16 +414,23 @@ void App::draw_sky(const Camera& cam, int w, int h) {
             sky_.rect(0, y0 - 40 * (k == 0), w, y1 - y0 + 40 * (k == 0), c);
         }
     }
-    const double yaw = std::atan2(d.y, d.x), half = std::atan(std::tan(cam.fovy / 2.0) * w / h);
-    for (int k = 0; k < W.clouds; ++k) {  // cartoon clouds round the sky (none when it is grey)
-        const double bearing = k * 0.698 + 0.31 * (k % 3), up = 0.10 + 0.05 * ((k * 5) % 4);
-        const double a = wrap_angle(bearing - yaw);
-        if (std::fabs(a) > half + 0.3) continue;
-        const int cx = static_cast<int>(w / 2.0 + std::tan(a) * f), cy = static_cast<int>(horizon - std::tan(up) * f);
-        const int cw = 26 + (k * 7) % 18, ch = 7 + k % 3;
-        sky_.rect(cx - cw / 2, cy - ch / 2 + 2, cw, ch, palette::kCloudShade);
-        sky_.rect(cx - cw / 2 + 2, cy - ch / 2, cw - 6, ch - 1, palette::kCloud);
-        sky_.rect(cx - cw / 5, cy - ch / 2 - 4, cw / 2, 5, palette::kCloud);
+    const double yaw = std::atan2(d.y, d.x);
+    {  // cartoon clouds at fixed bearings (game/render3d.py _draw_clouds): a blue-grey underside, then white on top
+        const double k = h / 224.0;  // their sizes are in pixels of the Python game's 224-line picture
+        std::uint8_t under[3];
+        for (int i = 0; i < 3; ++i) under[i] = static_cast<std::uint8_t>(255 + (W.sky_top[i] - 255) * 0.22);
+        static const std::uint8_t kWhite[3] = {255, 255, 255};
+        for (int c = 0; c < std::min<int>(W.clouds, static_cast<int>(clouds_.size())); ++c) {
+            const Cloud& cl = clouds_[c];
+            const double a = wrap_angle(cl.az - yaw);
+            if (std::fabs(a) > 1.2) continue;
+            const float cx = static_cast<float>(w / 2.0 + std::tan(a) * f), cy = static_cast<float>(horizon - cl.elev * k);
+            if (cx < -120 || cx > w + 120) continue;
+            for (int pass = 0; pass < 2; ++pass)
+                for (const auto& b : cl.blobs)
+                    sky_.ellipse(cx + b[0] * static_cast<float>(k), cy + (b[1] + (pass == 0 ? 3 : 0)) * static_cast<float>(k),
+                                 b[2] * static_cast<float>(k), b[3] * static_cast<float>(k), pass == 0 ? under : kWhite);
+        }
     }
     // two ridges of distant hills (game/render3d.py _draw_hills): fixed to compass direction, so they slide as you
     // steer; heights in pixels of the 180-line picture, scaled to this view
@@ -492,7 +517,10 @@ void App::draw_view(int i, int x, int y, int w, int h) {
     glClearColor(W.fog[0] / 255.0f, W.fog[1] / 255.0f, W.fog[2] / 255.0f, 1);
     glClearStencil(0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    const Camera cam = cams_[i].camera(kFovy);
+    target_.clear_normals();
+    // the view widens a little towards top speed: a sense of rush (no change below 40 km/h)
+    const double rush = std::clamp((cars_[i]->speed() - 11.0) / 24.0, 0.0, 1.0);
+    const Camera cam = cams_[i].camera(kFovy + static_cast<float>(0.14 * rush * rush));
     draw_sky(cam, w, h);
     const FrameStats st = renderer_.draw(cam, static_cast<float>(w) / h);
     tris_total_ += st.triangles;
@@ -600,14 +628,24 @@ void App::hud_single() {
     Town& town = *town_;
     MissionManager& jobs = *jobs_;
     const int kmh_v = static_cast<int>(std::lround(car.speed() * 3.6));
-    const std::string kmh = std::to_string(kmh_v) + " KM/H";
+    const std::string kmh = std::to_string(kmh_v);
     // with the touch buttons on screen the bottom corners are theirs: the speed, its sign, the damage bar and the
     // hints move up out of the way
     const bool touch = input_.touch().shown();
     const int low = touch ? 64 : kH;  // the bottom of the speed readout
-    hud_.text(6, low - 14, kmh, palette::kHudText, 2);
-    for (int k = 0; k < 4; ++k)  // wanted stars, left of the minimap
-        hud_.rect(kW - Minimap::kSize - 56 + k * 12, 6, 9, 9, k < town.stars() ? palette::kHudStar : palette::kHudStarOff);
+    // the speed: a big orange italic number with an ink outline, and a small KM/H (the Python street HUD)
+    hud_.text(6, low - 18, kmh, kOrange, 3);
+    const int speed_w = hud_.text_width(kmh, 3) + 6;
+    hud_.text(6 + speed_w, low - 9, "KM/H", palette::kHudText);
+    {  // the wanted level: four slanted chevrons, left of the minimap, flashing when lit
+        const bool flash = static_cast<int>(town.time() * 4) % 2 == 0;
+        static const std::uint8_t kLit[3] = {255, 56, 72}, kLit2[3] = {255, 150, 170}, kOff[3] = {60, 58, 84};
+        for (int k = 0; k < 4; ++k) {
+            const int sx = kW - Minimap::kSize - 62 + k * 14;
+            hud_.slant(sx - 1, 3, 13, 10, 5, kInk);
+            hud_.slant(sx, 4, 11, 8, 4, k < town.stars() ? (flash ? kLit : kLit2) : kOff);
+        }
+    }
     // the minimap, top right, with traffic, police and the job's markers on it, and its rotating N
     std::vector<MapBlip> blips;
     for (const auto& c : town.cars()) blips.push_back({c->x, c->y, {0, 0, 0}, c->police ? 1 : 0});
@@ -636,7 +674,7 @@ void App::hud_single() {
     }
     if (st.limit > 0) {
         const bool over = car.speed() * 3.6 > st.limit * 1.1 && town.state() == TownState::Playing;
-        const int lx = 6 + hud_.text_width(kmh, 2) + 6, ly = low - 26;
+        const int lx = 6 + speed_w + hud_.text_width("KM/H") + 6, ly = low - 26;
         hud_.rect(lx - 1, ly - 1, 22, 24, kInk);
         hud_.rect(lx, ly, 20, 22, palette::kHudText);
         hud_.text(lx + 4, ly + 2, "MAX", kInk, 1, false);
@@ -644,17 +682,21 @@ void App::hud_single() {
         hud_.text(lx + (20 - hud_.text_width(num, 2)) / 2, ly + 10, num, over ? palette::kHudRed : kInk, 2, false);
     }
     {
-        const int bw = touch ? 40 : 60, bx = touch ? kW - Minimap::kSize - 10 - bw : kW - 66, by = touch ? 19 : kH - 14;
-        hud_.text(bx - 16, by + 1, "DMG", palette::kHudText);
-        hud_.rect(bx, by, bw, 7, palette::kHudBar);
-        hud_.rect(bx + 1, by + 1, static_cast<int>((bw - 2) * town.damage() / 100.0), 5, palette::kHudDamage);
+        // the damage: a slanted bar going yellow, orange, then red (the Python street HUD)
+        const int bw = touch ? 40 : 60, bx = touch ? kW - Minimap::kSize - 12 - bw : kW - 70, by = touch ? 19 : kH - 15;
+        hud_.text(bx - 18, by, "DMG", palette::kHudText);
+        hud_.slant(bx - 1, by - 1, bw + 2, 10, 4, kInk);
+        static const std::uint8_t kEmpty[3] = {60, 58, 84}, kRed[3] = {236, 52, 52};
+        hud_.slant(bx, by, bw, 8, 4, kEmpty);
+        const double frac = std::min(1.0, town.damage() / 100.0);
+        if (frac > 0) hud_.slant(bx, by, std::max(2, static_cast<int>(bw * frac)), 8, 4, frac < 0.4 ? kYellow : frac < 0.7 ? kOrange : kRed);
     }
     hud_.text(6, 6, "$" + std::to_string(jobs.cash()), palette::kHudCash, 2);  // cash, in money green
     if (const Job* j = jobs.job()) {  // the job: timer, objective, and an arrow to the target
         const int secs = std::max(0, static_cast<int>(std::ceil(j->time_left)));
         const std::string clock = std::to_string(secs / 60) + ":" + (secs % 60 < 10 ? "0" : "") + std::to_string(secs % 60);
         const std::uint8_t jc[3] = {j->colour.r, j->colour.g, j->colour.b};
-        hud_.text((kW - hud_.text_width(clock, 2)) / 2, 6, clock, secs < 15 ? palette::kHudRed : palette::kHudText, 2);
+        hud_.text((kW - hud_.text_width(clock, 2)) / 2, 6, clock, secs < 15 ? palette::kHudRed : kOrange, 2);
         const std::string obj = jobs.objective();
         hud_.text((kW - hud_.text_width(obj)) / 2, 20, obj, jc);
         double tx, ty;
@@ -669,15 +711,15 @@ void App::hud_single() {
         }
     } else {
         const std::string h = jobs.hint(car);
-        if (!h.empty()) hud_.text((kW - hud_.text_width(h)) / 2, touch ? 64 : kH - 28, h, palette::kHudText);
+        if (!h.empty()) hud_.text((kW - hud_.text_width(h)) / 2, touch ? 64 : kH - 40, h, palette::kHudText);
     }
     if (!jobs.banner().empty()) {
         const std::uint8_t bc[3] = {jobs.banner_colour().r, jobs.banner_colour().g, jobs.banner_colour().b};
         hud_.text((kW - hud_.text_width(jobs.banner(), 2)) / 2, 66, jobs.banner(), bc, 2);
     }
     if (town.state() != TownState::Playing) {
-        const std::string big = town.state() == TownState::Busted ? "BUSTED" : "WRECKED";
-        hud_.text((kW - hud_.text_width(big, 4)) / 2, 60, big, palette::kHudRed, 4);
+        const std::string big = town.state() == TownState::Busted ? "BUSTED!" : "WRECKED!";
+        hud_.text((kW - hud_.text_width(big, 4)) / 2, 60, big, town.state() == TownState::Busted ? kYellow : kOrange, 4);
     }
 }
 
@@ -807,6 +849,7 @@ void App::draw_menu() {
     glViewport(0, 0, kW, kH);
     glClearColor(palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    target_.clear_normals();
     draw_sky(cam, kW, kH);
     renderer_.draw(cam, static_cast<float>(kW) / kH);
     hud_.text((kW - hud_.text_width("AMHERST RUN", 4)) / 2, 12, "AMHERST RUN", kYellow, 4);
@@ -823,7 +866,7 @@ void App::draw_menu() {
             hud_.rect(rx, ry, rw, rh, kPanel);
         }
         const std::string label = kMenu[i].label;
-        hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 1, label, sel ? kInk : kDim, 2);
+        hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 1, label, sel ? kInk : kDim, 2, !sel);
     }
     const std::string help = kMenu[menu_index_].help;
     hud_.text((kW - hud_.text_width(help)) / 2, 147, help, palette::kHudText);
@@ -847,7 +890,7 @@ void App::draw_pause() {
         hud_.rect(rx, ry, rw, rh, sel ? kOrange : kPanel);
         if (!sel) hud_.rect(rx, ry + rh - 1, rw, 1, kPanelEdge);
         const std::string label = i == 1 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH") : kPause[i];
-        hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 2, label, sel ? kInk : kDim, 2);
+        hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 2, label, sel ? kInk : kDim, 2, !sel);
     }
 }
 

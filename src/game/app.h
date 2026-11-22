@@ -4,6 +4,7 @@
 #pragma once
 #include <SDL.h>
 
+#include <array>
 #include <memory>
 #include <unordered_map>
 #include <string>
@@ -76,7 +77,12 @@ private:
     void draw_pause();
     void draw_touch();
     void draw_clock_hands();
-    std::vector<ClockFace> clock_faces_;  // the clock tower's faces (render/building_detail.h)
+    std::vector<ClockFace> clock_faces_;
+    struct Cloud {  // a cartoon cloud: ellipses (dx, dy, rx, ry in pixels of the 224-line Python picture) at a bearing
+        double az = 0, elev = 0;
+        std::vector<std::array<float, 4>> blobs;
+    };
+    std::vector<Cloud> clouds_;  // the clock tower's faces (render/building_detail.h)
     void menu_input(const Actions& a);
     void pause_input(const Actions& a);
 

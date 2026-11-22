@@ -21,7 +21,8 @@ public:
     bool ok() const { return fbo_ != 0 && fbo2_ != 0 && ink_prog_ != 0; }
     int width() const { return w_; }
     int height() const { return h_; }
-    void bind();                                   // draw the scene into the small picture
+    void bind();                                   // draw the scene into the small picture (colour + normals)
+    void clear_normals();                          // after clearing the scene: no surface anywhere yet
     // Outline the scene (near / far: the projection's planes, to turn depth into metres) into the final picture,
     // and leave that bound for the HUD. ink_until: metres beyond which there are no lines.
     void ink(float znear, float zfar, float ink_until, const float rgb[3], bool enabled = true);
@@ -32,6 +33,7 @@ public:
 private:
     int w_, h_;
     GLuint fbo_ = 0, color_ = 0, depth_ = 0;       // the scene
+    GLuint normal_ = 0;                            // ... its surfaces' normals, alpha 1 where creases get ink
     GLuint fbo2_ = 0, color2_ = 0;                 // the final picture (scene + ink, then the HUD)
     GLuint ink_prog_ = 0, vao_ = 0;
 };
