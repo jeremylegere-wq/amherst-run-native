@@ -80,6 +80,22 @@ struct GraphEdge {
     std::uint32_t name = 0;
 };
 
+// Job hubs, Heritage Tour spots and real civic addresses (game/missions.py, data/addresses.json).
+struct HubSpot {
+    int role = 0;  // 0 deliveries, 1 getaway, 2 tour, 3 courthouse
+    double x = 0, y = 0;
+    std::string label;
+};
+struct TourSpot {
+    double x = 0, y = 0;
+    std::string label;
+};
+struct CivicAddress {
+    float x = 0, y = 0;
+    std::string number;
+    std::uint32_t street = 0;  // index into names
+};
+
 struct TerrainGrid {
     float x0 = 0, y0 = 0, step = 12.5f;
     int nx = 0, ny = 0;
@@ -110,6 +126,9 @@ struct MapData {
     std::vector<double> jn_box, jn_stop_at;   // node: junction box radius; distance from the node to the stop point
     std::vector<std::uint8_t> jn_control;     // edge: 0 priority 1 signal 2 stop 3 yield 4 all-way
     std::vector<std::uint8_t> jn_phase;       // edge: signal phase, 0 east-west 1 north-south
+    std::vector<HubSpot> hubs;
+    std::vector<TourSpot> tour_spots;
+    std::vector<CivicAddress> addresses;
     int prop_kind(const std::string& name) const;  // index of a kind, -1 if the map has none of it
 };
 

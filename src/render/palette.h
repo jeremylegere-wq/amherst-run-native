@@ -20,6 +20,7 @@ inline constexpr std::uint8_t kTraffic[8][3] = {{196, 60, 60}, {60, 120, 200}, {
                                                 {70, 70, 80},   {210, 130, 50}, {150, 90, 170}, {120, 190, 190}};
 inline constexpr std::uint8_t kPoliceBody[3] = {236, 236, 240};
 inline constexpr std::uint8_t kHudText[3] = {248, 248, 248};
+inline constexpr std::uint8_t kHudCash[3] = {120, 236, 96};
 inline constexpr std::uint8_t kHudStar[3] = {255, 214, 40};
 inline constexpr std::uint8_t kHudStarOff[3] = {70, 70, 80};
 inline constexpr std::uint8_t kHudBar[3] = {40, 40, 52};

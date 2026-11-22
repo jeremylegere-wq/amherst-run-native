@@ -16,9 +16,10 @@ public:
     bool ok() const { return program_ != 0; }
     void begin();                                                        // start a frame's HUD
     void rect(int x, int y, int w, int h, const std::uint8_t rgb[3]);    // y down from the top, in pixels
-    // Text in the 3x5 font at `scale` pixels per dot, with a one-dot dark shadow. Letters, digits, space, / - .
+    // Text in the 3x5 font at `scale` pixels per dot, with a one-dot dark shadow. Letters, digits, space and / - . ! ( ) : $ + ' ,
     void text(int x, int y, const std::string& s, const std::uint8_t rgb[3], int scale = 1);
     int text_width(const std::string& s, int scale = 1) const;
+    void tri(float x0, float y0, float x1, float y1, float x2, float y2, const std::uint8_t rgb[3]);
     void end();                                                          // draw it all over the picture
 
 private:

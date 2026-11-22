@@ -40,6 +40,7 @@ public:
     double player_power() const;           // 1.0 undamaged, down to 0.65 at 100 damage
     int stars() const;
     double heat() const { return heat_; }
+    bool cops() const { return cops_; }
     double damage() const { return damage_; }
     double time() const { return time_; }  // the town clock (the traffic lights run on it)
     TownState state() const { return state_; }

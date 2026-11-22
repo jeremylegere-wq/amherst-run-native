@@ -10,7 +10,9 @@ physics: grip, handbrake, hop, power slides and boosts, the hills' pull, overpas
 trees and posts you bounce off (all 455,000 of the map's trees, simply drawn). It matches the Python game to under 2 mm
 on its golden drives. Phase 2 has begun: civilian traffic on the road graph (16 cars downtown, fewer on quiet roads),
 driven like the Python game's, stopping at lights and stop signs, giving way, and bumping into you; police who chase
-you when you hit traffic, the wanted stars, damage, BUSTED and WRECKED, and a small HUD. Not yet: the jobs, menus, the cars' real shapes, landmarks,
+you when you hit traffic, the wanted stars, damage, BUSTED and WRECKED, and a small HUD. Phase 3 has begun: the jobs
+(Parcel Run to real addresses, Getaway, Heritage Tour, paying fines) with glowing beacons, a timer and an arrow.
+Not yet: menus, the cars' real shapes, landmarks,
 the street style's detail. The Xbox and Android builds (phase 0) are still to do.
 
 | Target | Status |
@@ -42,7 +44,8 @@ a tree) and
 checks the car follows the same path. The `traffic` test checks the road graph's A* routes and nearest nodes and
 replays the Python game's traffic drivers (including at a junction with lights, a stop sign and an all-way stop),
 then the police chases (boxing in, chasing, standing down) and the town's rules (heat, arrests, damage), then runs a
-minute of town and checks the cars keep moving on the roads.
+minute of town and checks the cars keep moving on the roads. The `jobs` test checks drop-point addresses, route lengths
+and the Heritage Tours against the Python game, and that tours pay and banks start getaways.
 
 Controls (as the Python game): left stick or D-pad steers, up is gas, down brakes and reverses (RT/LT work too), A is
 the handbrake, LB/RB hop (hold through a turn at speed to power-slide, let go to boost), Back quits. Keyboard: arrows or

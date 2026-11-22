@@ -21,6 +21,7 @@
 #include "render/gl.h"
 #include "render/shader.h"
 #include "render/chase_camera.h"
+#include "game/missions.h"
 #include "render/hud.h"
 #include "render/map_renderer.h"
 #include "render/palette.h"
@@ -158,6 +159,7 @@ int main(int argc, char** argv) {
     amr::Town town(world, graph, &junctions, 1, args.traffic, args.cops);
     town.add_heat(args.heat);
     amr::Hud hud(kInternalW, kInternalH);
+    amr::MissionManager jobs(world, graph, town);
     const double start_x = sx, start_y = sy, start_heading = car.heading;
     amr::ChaseCamera chase(car);
     chase.update(car, world, 0.0, true);
@@ -191,11 +193,13 @@ int main(int argc, char** argv) {
             const double impact = amr::move_and_slide(car, world, px, py, true);
             amr::settle_height(car, world, dt);
             town.update(dt, car, impact);
+            jobs.update(dt, car);
             if (town.consume_reset()) {  // after BUSTED or WRECKED: back to the start, fresh car, quiet town
                 car = amr::Car(start_x, start_y, start_heading, amr::player_model(0));
                 car.z = world.height_at(static_cast<float>(start_x), static_cast<float>(start_y),
                                         world.ground(static_cast<float>(start_x), static_cast<float>(start_y)));
                 town.reset();
+                jobs.abort();
                 chase.update(car, world, 0.0, true);
             }
             chase.update(car, world, dt);
@@ -240,6 +244,19 @@ int main(int argc, char** argv) {
             tris_total += st.triangles;
         }
 
+        for (const amr::Marker& mk : jobs.markers()) {  // job beacons: a glowing column and a pad on the ground
+            const float mx = static_cast<float>(mk.x), my = static_cast<float>(mk.y);
+            const float g = world.ground(mx, my);
+            const std::uint8_t col[3] = {mk.colour.r, mk.colour.g, mk.colour.b};
+            amr::Mat4 pad = amr::translate({mx, my, g + 0.05f});
+            pad.at(0, 0) = pad.at(1, 1) = static_cast<float>(mk.radius) * 1.6f;
+            pad.at(2, 2) = 0.08f;
+            renderer.draw_box(pad, col);
+            amr::Mat4 beam = amr::translate({mx, my, g});
+            beam.at(0, 0) = beam.at(1, 1) = 0.8f;
+            beam.at(2, 2) = mk.hub ? 14.0f : 30.0f;
+            renderer.draw_box(beam, col);
+        }
         hud.begin();  // speed, stars, damage, and the big BUSTED / WRECKED
         const std::string kmh = std::to_string(static_cast<int>(std::lround(car.speed() * 3.6))) + " KM/H";
         hud.text(6, kInternalH - 14, kmh, amr::palette::kHudText, 2);
@@ -248,6 +265,32 @@ int main(int argc, char** argv) {
         hud.text(kInternalW - 82, kInternalH - 13, "DMG", amr::palette::kHudText);
         hud.rect(kInternalW - 66, kInternalH - 14, 60, 7, amr::palette::kHudBar);
         hud.rect(kInternalW - 65, kInternalH - 13, static_cast<int>(58 * town.damage() / 100.0), 5, amr::palette::kHudDamage);
+        hud.text(6, 6, "$" + std::to_string(jobs.cash()), amr::palette::kHudCash, 2);  // cash, in money green
+        if (const amr::Job* j = jobs.job()) {  // the job: timer, objective, and an arrow to the target
+            const int secs = std::max(0, static_cast<int>(std::ceil(j->time_left)));
+            const std::string clock = std::to_string(secs / 60) + ":" + (secs % 60 < 10 ? "0" : "") + std::to_string(secs % 60);
+            const std::uint8_t jc[3] = {j->colour.r, j->colour.g, j->colour.b};
+            hud.text((kInternalW - hud.text_width(clock, 2)) / 2, 6, clock, secs < 15 ? amr::palette::kHudRed : amr::palette::kHudText, 2);
+            const std::string obj = jobs.objective();
+            hud.text((kInternalW - hud.text_width(obj)) / 2, 20, obj, jc);
+            double tx, ty;
+            if (jobs.current_target(tx, ty)) {
+                const double a = amr::wrap_angle(std::atan2(ty - car.y, tx - car.x) - car.heading);  // + is to the right
+                const float cx = kInternalW / 2.0f, cy = 38.0f, r = 8.0f;
+                const float sa = static_cast<float>(std::sin(a)), ca = static_cast<float>(std::cos(a));
+                hud.tri(cx + sa * r, cy - ca * r, cx - ca * 5 - sa * 4, cy - sa * 5 + ca * 4,
+                        cx + ca * 5 - sa * 4, cy + sa * 5 + ca * 4, jc);
+                const std::string dist = std::to_string(static_cast<int>(std::hypot(tx - car.x, ty - car.y))) + " M";
+                hud.text((kInternalW - hud.text_width(dist)) / 2, 50, dist, amr::palette::kHudText);
+            }
+        } else {
+            const std::string h = jobs.hint(car);
+            if (!h.empty()) hud.text((kInternalW - hud.text_width(h)) / 2, kInternalH - 28, h, amr::palette::kHudText);
+        }
+        if (!jobs.banner().empty()) {
+            const std::uint8_t bc[3] = {jobs.banner_colour().r, jobs.banner_colour().g, jobs.banner_colour().b};
+            hud.text((kInternalW - hud.text_width(jobs.banner(), 2)) / 2, 66, jobs.banner(), bc, 2);
+        }
         if (town.state() != amr::TownState::Playing) {
             const std::string big = town.state() == amr::TownState::Busted ? "BUSTED" : "WRECKED";
             hud.text((kInternalW - hud.text_width(big, 4)) / 2, 60, big, amr::palette::kHudRed, 4);

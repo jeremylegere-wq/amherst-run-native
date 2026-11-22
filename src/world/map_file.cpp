@@ -213,6 +213,26 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             m.jn_control[i] = r.get<std::uint8_t>();
             m.jn_phase[i] = r.get<std::uint8_t>();
         }
+    } else if (tag == "HUBS") {
+        m.hubs.resize(r.count(17));
+        for (auto& h : m.hubs) {
+            h.role = r.get<std::uint8_t>();
+            h.x = r.get<double>(); h.y = r.get<double>();
+            h.label = r.str();
+        }
+    } else if (tag == "TOUR") {
+        m.tour_spots.resize(r.count(20));
+        for (auto& t : m.tour_spots) {
+            t.x = r.get<double>(); t.y = r.get<double>();
+            t.label = r.str();
+        }
+    } else if (tag == "ADDR") {
+        m.addresses.resize(r.count(16));
+        for (auto& a : m.addresses) {
+            a.x = r.get<float>(); a.y = r.get<float>();
+            a.number = r.str();
+            a.street = r.get<std::uint32_t>();
+        }
     } else {
         return true;  // a newer chunk this version does not know: skip it
     }

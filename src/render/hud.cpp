@@ -43,6 +43,8 @@ const Glyph kFont[] = {
     {'S', {3, 4, 2, 1, 6}}, {'T', {7, 2, 2, 2, 2}}, {'U', {5, 5, 5, 5, 7}}, {'V', {5, 5, 5, 5, 2}},
     {'W', {5, 5, 7, 7, 5}}, {'X', {5, 5, 2, 5, 5}}, {'Y', {5, 5, 2, 2, 2}}, {'Z', {7, 1, 2, 4, 7}},
     {'/', {1, 1, 2, 4, 4}}, {'-', {0, 0, 7, 0, 0}}, {'.', {0, 0, 0, 0, 2}}, {' ', {0, 0, 0, 0, 0}},
+    {'!', {2, 2, 2, 0, 2}}, {'(', {1, 2, 2, 2, 1}}, {')', {4, 2, 2, 2, 4}}, {':', {0, 2, 0, 2, 0}},
+    {'$', {7, 6, 7, 3, 7}}, {'+', {0, 2, 7, 2, 0}}, {'\'', {2, 2, 0, 0, 0}}, {',', {0, 0, 0, 2, 4}},
 };
 const Glyph* glyph(char c) {
     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -102,6 +104,11 @@ void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], in
             cx += 4 * scale;
         }
     }
+}
+
+void Hud::tri(float x0, float y0, float x1, float y1, float x2, float y2, const std::uint8_t rgb[3]) {
+    const float r = rgb[0] / 255.0f, g = rgb[1] / 255.0f, b = rgb[2] / 255.0f;
+    verts_.insert(verts_.end(), {x0, y0, r, g, b, x1, y1, r, g, b, x2, y2, r, g, b});
 }
 
 void Hud::end() {
