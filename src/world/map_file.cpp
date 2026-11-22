@@ -255,6 +255,25 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             t.x = r.get<double>(); t.y = r.get<double>();
             t.label = r.str();
         }
+    } else if (tag == "BDET") {
+        const auto n = r.count(41);
+        if (n != m.buildings.size()) return false;  // (BLDG comes first in the file)
+        for (auto& b : m.buildings) {
+            BuildingDetail& d = b.detail;
+            d.house = r.get<std::uint8_t>(); d.storeys = r.get<std::uint8_t>(); d.flags = r.get<std::uint8_t>();
+            d.steeple = r.get<std::uint8_t>(); d.landmark = r.get<std::uint8_t>(); d.dormers = r.get<std::uint8_t>();
+            d.front = r.get<std::int16_t>(); d.wrap = r.get<std::int16_t>();
+            d.door = r.get<float>();
+            d.door_rgb = r.rgb(); d.shutters = r.rgb(); d.plaque = r.rgb(); d.plinth = r.rgb();
+            d.window_h = r.get<float>(); d.plinth_h = r.get<float>(); d.chimney = r.get<float>();
+            d.dormer_side = r.get<std::int8_t>();
+            d.shop_storeys = r.get<std::uint8_t>();
+            d.shops.resize(r.get<std::uint8_t>());
+            for (auto& k : d.shops) k = r.get<std::uint16_t>();
+            const int walls = static_cast<int>(b.points.size());
+            if (d.front >= walls || d.wrap >= walls) return false;
+            for (auto k : d.shops) if (k >= walls) return false;
+        }
     } else if (tag == "ADDR") {
         m.addresses.resize(r.count(16));
         for (auto& a : m.addresses) {

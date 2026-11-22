@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 
+#include "render/building_detail.h"
 #include "render/landmarks.h"
 #include "render/palette.h"
 #include "render/shader.h"
@@ -524,8 +525,15 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                         std::uint32_t idx[4];
                         for (int k = 0; k < f.n; ++k) idx[k] = s.add(f.v[outward ? k : f.n - 1 - k], n, col);
                         for (int k = 1; k + 1 < f.n; ++k) s.tri(idx[0], idx[k], idx[k + 1]);
+                        if (upright && f.n == 3 && (bd.detail.house == kCape || bd.detail.house == kTwoStorey)) {
+                            int apex = 0;  // the gable's top corner; the other two are the eaves
+                            for (int k = 1; k < 3; ++k) if (f.v[k].z > f.v[apex].z) apex = k;
+                            const Vec3 tri[3] = {f.v[(apex + 1) % 3], f.v[(apex + 2) % 3], f.v[apex]};
+                            add_attic_window(s, tri, n);
+                        }
                     }
                 }
+                add_building_details(s, bd, it.index, hi, base);
             } else if (it.kind == 5) {  // a rail segment: the bed, and two rails on it
                 const auto& line = m.rails[it.index];
                 const Point2 a = line[it.sub], b = line[it.sub + 1];

@@ -48,12 +48,34 @@ struct Tri {
 
 enum Roof : std::uint8_t { kFlat = 0, kGable = 1, kHip = 2, kCone = 3, kMansard = 4 };
 
+enum HouseKind : std::uint8_t { kNotHouse = 0, kGarage, kMiniHome, kBungalow, kCape, kTwoStorey };
+enum DetailFlag : std::uint8_t {
+    kPorch = 1, kSidelights = 2, kNoFrontWindows = 4, kShutters = 8, kPlaque = 16, kClockTower = 32, kCornice = 64,
+    kOwnDoor = 128
+};
+enum Steeple : std::uint8_t { kNoSteeple = 0, kSpire, kTurret, kTwin };
+enum LandmarkKind : std::uint8_t { kNoLandmark = 0, kCourtHouse, kCivic, kChurch, kArmoury, kOtherLandmark };
+
+// What the street style draws on a building (BDET; game/archetypes.py and render3d.py _house / _shop_walls).
+// Walls are numbered by the outline: wall k runs from point k to point k + 1.
+struct BuildingDetail {
+    std::uint8_t house = kNotHouse, storeys = 1, flags = 0, steeple = kNoSteeple, landmark = kNoLandmark, dormers = 0;
+    std::int16_t front = -1, wrap = -1;  // the wall facing the street; the side wall a veranda turns onto
+    float door = 0.5f;                   // door place along the front wall, 0..1
+    Rgb door_rgb, shutters, plaque, plinth;
+    float window_h = 1.3f, plinth_h = 0, chimney = -9;  // chimney: place along the ridge -1..1 (-9: none)
+    std::int8_t dormer_side = 1;         // which roof slope: + or - the ridge's left normal
+    std::uint8_t shop_storeys = 0;       // 0: from the height
+    std::vector<std::uint16_t> shops;    // walls with a shop front
+};
+
 struct Building {
     float height = 6, roof_height = 0;
     std::uint8_t roof = kFlat, flags = 0;
     Rgb wall, roof_colour;
     std::vector<Point2> points;  // footprint outline
     std::vector<Tri> tris;       // footprint triangles (counter-clockwise)
+    BuildingDetail detail;       // (all defaults when the map has no BDET chunk)
 };
 
 enum PolyKind : std::uint8_t { kWater = 0, kPark = 1, kLot = 2, kLandUse = 3 };
