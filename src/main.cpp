@@ -11,6 +11,7 @@
 //   amherst-run --no-train | --train-in S        no train | the first train after S seconds (default 50-90)
 //   amherst-run --weather clear|overcast|fog|golden|snow   the weather (F4 changes it while playing)
 //   amherst-run --touch | --quality low|high       on-screen touch buttons (the mouse works them) | phone quality
+//   amherst-run --screen full|safe                the whole window, or a TV-safe border (the Xbox's default)
 //   amherst-run --no-music                        start with the music off (the pause menu switches it)
 //   amherst-run --no-save | --save-dir DIR        neither load nor save progress (cash, tags, weather, quality) |
 //                                                 keep the save in DIR (test runs too)
@@ -23,8 +24,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <string>
 
+#include "core/log.h"
 #include "game/app.h"
 #include "render/gl.h"
 #include "render/weather.h"
@@ -99,6 +102,10 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
             if (q != "low" && q != "high") return false;
             a.low_quality = q == "low";
             a.quality_set = true;
+        } else if (!std::strcmp(s, "--screen") && more) {
+            const std::string q = argv[++i];
+            if (q != "full" && q != "safe") return false;
+            a.screen = q == "safe" ? 1 : 0;
         } else if (!std::strcmp(s, "--no-music")) {
             a.no_music = true;
         } else if (!std::strcmp(s, "--no-save")) {
@@ -128,6 +135,7 @@ int main(int argc, char** argv) {
     amr::Options opt;
     std::string map_path;
     if (!parse(argc, argv, opt, map_path)) return 2;
+    amr::log_open();
     if (map_path.empty()) map_path = default_map();
 #ifdef __WINRT__
     SDL_SetHint(SDL_HINT_WINRT_HANDLE_BACK_BUTTON, "1");  // Xbox: B is the game's, not the console's "go back"
@@ -136,9 +144,10 @@ int main(int argc, char** argv) {
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");  // the phone's Back pauses (like Esc) instead of closing
 #endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {  // (audio starts later, if it can)
-        std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        amr::fatal(std::string("SDL could not start: ") + SDL_GetError());
         return 1;
     }
+    amr::log_info("Amherst Run (native) %s on %s, video %s", AMR_VERSION, SDL_GetPlatform(), SDL_GetCurrentVideoDriver());
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
@@ -147,37 +156,46 @@ int main(int argc, char** argv) {
     SDL_Window* win = SDL_CreateWindow("Amherst Run", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, amr::App::kW * 3,
                                        amr::App::kH * 3, flags);
     if (!win) {
-        std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
+        amr::fatal(std::string("No window: ") + SDL_GetError());
         return 1;
     }
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
     if (!ctx) {
-        std::fprintf(stderr, "OpenGL ES 3.0 context: %s\n", SDL_GetError());
+        amr::fatal(std::string("No OpenGL ES 3.0 (the game needs it): ") + SDL_GetError());
         return 1;
     }
     SDL_GL_SetSwapInterval(1);
-    std::printf("Amherst Run (native) %s: %s, %s\n", AMR_VERSION, reinterpret_cast<const char*>(glGetString(GL_VERSION)),
-                reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
-    int code = 1;
     {
+        int dw = 0, dh = 0;
+        SDL_GL_GetDrawableSize(win, &dw, &dh);
+        auto gl = [](GLenum e) { const GLubyte* v = glGetString(e); return v ? reinterpret_cast<const char*>(v) : "?"; };
+        amr::log_info("GL: %s | %s | %s | GLSL %s; drawable %dx%d", gl(GL_VERSION), gl(GL_RENDERER), gl(GL_VENDOR),
+                      gl(GL_SHADING_LANGUAGE_VERSION), dw, dh);
+    }
+    int code = 1;
+    try {
         std::string err;
         amr::MapData map;
         const Uint64 t_load = SDL_GetPerformanceCounter();
         if (!amr::load_map(map_path, map, err)) {
-            std::fprintf(stderr, "map: %s\n(bake it with amherst-run's tools/bake_native.py, or get it with "
-                                 "tools/fetch_map.py)\n", err.c_str());
+            amr::fatal("The map did not load (" + map_path + "): " + err +
+                       "\n(bake it with amherst-run's tools/bake_native.py, or get it with tools/fetch_map.py)");
         } else {
             amr::RoadGraph graph(map);
             amr::World world(std::move(map));
             amr::Junctions junctions(world.map(), graph);
-            std::printf("map %s: %zu roads, %zu buildings, %zu overpass decks (%s), loaded in %.2f s\n",
-                        map_path.c_str(), world.map().roads.size(), world.map().buildings.size(),
-                        world.map().spans.size(), world.map().source.c_str(),
-                        (SDL_GetPerformanceCounter() - t_load) / static_cast<double>(SDL_GetPerformanceFrequency()));
+            amr::log_info("map %s: %zu roads, %zu buildings, %zu overpass decks (%s), loaded in %.2f s", map_path.c_str(),
+                          world.map().roads.size(), world.map().buildings.size(), world.map().spans.size(),
+                          world.map().source.c_str(),
+                          (SDL_GetPerformanceCounter() - t_load) / static_cast<double>(SDL_GetPerformanceFrequency()));
             amr::App app(win, world, graph, junctions, opt);
-            if (!app.ok()) std::fprintf(stderr, "could not set up the renderer\n");
+            if (!app.ok()) amr::fatal("The renderer could not be set up (a shader or a picture buffer failed: see the log).");
             else code = app.run();
+            amr::log_info("quit (%d)", code);
         }
+    } catch (const std::exception& e) {
+        amr::fatal(std::string("The game stopped: ") + e.what());
+        code = 1;
     }
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);

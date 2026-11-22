@@ -4,7 +4,7 @@
          xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          IgnorableNamespaces="uap mp">
-  <Identity Name="AmherstRun" Publisher="CN=AmherstRunDev" Version="0.1.0.0" />
+  <Identity Name="AmherstRun" Publisher="CN=AmherstRunDev" Version="@AMR_PKG_VERSION@" />
   <mp:PhoneIdentity PhoneProductId="b5ca51e3-61d1-4051-9d0a-7ee860b73bb9" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>Amherst Run</DisplayName>

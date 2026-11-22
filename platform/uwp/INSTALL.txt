@@ -1,0 +1,41 @@
+AMHERST RUN on an Xbox One / Series in Developer Mode
+=====================================================
+
+What is in this folder
+  AmherstRun_<version>_x64_Test/AmherstRun_<version>_x64.msix              the game (the map is inside)
+  AmherstRun_<version>_x64_Test/Dependencies/x64/Microsoft.VCLibs.x64.14.00.appx   the C++ runtime it needs
+  amherst-run-test.cer                                                     its test certificate
+
+1. Developer Mode (once)
+   - On the console, install "Xbox Dev Mode" from the Store and follow it: it needs a Partner Center developer
+     account to get an activation code. The console restarts into Developer Mode (Dev Home).
+   - In Dev Home, under Remote Access, turn on the Xbox Device Portal and set a user name and password. Dev Home
+     shows the address, e.g. https://192.168.1.50:11443
+
+2. Install (from any computer on the same network)
+   - Open that address in a browser (accept the warning about the console's own certificate) and sign in.
+   - Home > My games & apps > Add.
+   - Choose the .msix file. Tick "I want to specify optional packages" / dependencies and add
+     Microsoft.VCLibs.x64.14.00.appx. If it asks for a certificate, give it amherst-run-test.cer.
+   - Install. A newer build installs over an older one (each build has a higher version). If the console
+     refuses an update, uninstall Amherst Run in the Device Portal first, then add the new one.
+
+3. Make it a Game (once per install)
+   - In Dev Home, highlight Amherst Run, press the View button > View details, and set App type to "Game".
+     Games get far more memory and the bigger share of the CPU and GPU. Launch it from Dev Home.
+
+Controls (a controller)
+   left stick or D-pad   steer (stick/D-pad up = gas, down = brake/reverse; the triggers work too)
+   RT / LT                gas / brake
+   A                      handbrake (and pick in menus)
+   LB / RB                hop; hold through a turn to power-slide, let go for a boost
+   X                      hold beside a marked wall to spray your tag
+   Menu (Start) or View   pause    B: back
+   Pause menu: MUSIC on/off, QUALITY high/low (low: shorter view, no see-through shadows, for speed),
+   SCREEN full/safe (safe, the console's default, keeps the picture inside a TV that crops its edges).
+
+If it closes or looks wrong
+   The game writes a log on the console. In the Device Portal: File explorer > LocalAppData > the AmherstRun
+   folder > LocalState > AmherstRun > AmherstRun > log.txt (the run before: log-previous.txt). It has the
+   graphics driver's name and version and any error; send it along.
+   Progress (cash, walls, settings) is in save.txt in the same folder.

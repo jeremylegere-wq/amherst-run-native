@@ -1,3 +1,4 @@
+#include "core/log.h"
 #include "render/minimap.h"
 
 #include <algorithm>
@@ -57,7 +58,7 @@ Minimap::Minimap(const World& world) : world_(world), layer_(kSize, kSize) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     std::string err;
     prog_ = make_program(kVertex, kFragment, err);
-    if (!prog_) std::fprintf(stderr, "minimap shader: %s\n", err.c_str());
+    if (!prog_) log_error("minimap shader: %s", err.c_str());
     glGenVertexArrays(1, &vao_);
 }
 

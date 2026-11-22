@@ -16,6 +16,7 @@ find_library(GLES3_LIB NAMES GLESv2 GLESv3 REQUIRED)
 
 add_library(amr_core STATIC
   src/core/input.cpp
+  src/core/log.cpp
   src/core/touch.cpp
   src/core/sound.cpp
   src/core/music.cpp

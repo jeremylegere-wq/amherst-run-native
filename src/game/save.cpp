@@ -37,6 +37,7 @@ bool load_save(const std::string& path, SaveData& out) {
         else if (key == "quality") { std::string q; l >> q; d.low_quality = q == "low"; }
         else if (key == "music") { std::string q; l >> q; d.music = q != "off"; }
         else if (key == "walls") d.walls = true;
+        else if (key == "screen") { std::string q; l >> q; d.screen = q == "safe" ? 1 : 0; }
         else if (key == "tag" || key == "rival") {
             double x, y;
             if (l >> x >> y) (key == "tag" ? d.tags : d.rivals).push_back({x, y});
@@ -54,6 +55,7 @@ bool write_save(const std::string& path, const SaveData& d) {
     o << "weather " << d.weather << "\n";
     o << "quality " << (d.low_quality ? "low" : "high") << "\n";
     o << "music " << (d.music ? "on" : "off") << "\n";
+    if (d.screen >= 0) o << "screen " << (d.screen ? "safe" : "full") << "\n";
     if (d.walls) o << "walls 1\n";
     char line[64];
     for (const auto& t : d.tags) {

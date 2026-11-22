@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "core/log.h"
 #include "render/palette.h"
 #include "render/weather.h"
 #include "sim/collision.h"
@@ -48,9 +49,10 @@ void rainbow(double h, std::uint8_t out[3]) {
     out[0] = c[i][0]; out[1] = c[i][1]; out[2] = c[i][2];
 }
 constexpr int kMenuCount = sizeof(kMenu) / sizeof(kMenu[0]);
-const char* kPause[] = {"RESUME", "MUSIC", "QUALITY", "MAIN MENU", "QUIT"};
+const char* kPause[] = {"RESUME", "MUSIC", "QUALITY", "SCREEN", "MAIN MENU", "QUIT"};
 constexpr int kPauseCount = sizeof(kPause) / sizeof(kPause[0]);
-constexpr int kPauseW = 140, kPauseH = 116;  // the pause box
+constexpr int kPauseW = 140, kPauseH = 133;  // the pause box
+constexpr float kSafeMargin = 0.05f;         // the TV-safe border on each side
 
 // Screen rectangles (x, y, w, h) of the players in the 320x180 picture (game/twoplayer.py layout).
 void layout(int n, int i, int& x, int& y, int& w, int& h) {
@@ -119,6 +121,15 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
     renderer_.set_weather(opt_.weather);
     renderer_.set_low_quality(opt_.low_quality);
     sound_.set_music(!opt_.no_music && (!loaded_ || save_.music));
+#ifdef __WINRT__
+    safe_screen_ = true;  // a console on a TV: keep the HUD inside the title-safe area until the player says otherwise
+#endif
+    if (loaded_ && save_.screen >= 0) safe_screen_ = save_.screen == 1;
+    if (opt_.screen >= 0) safe_screen_ = opt_.screen == 1;
+    input_.touch().set_margin(safe_screen_ ? kSafeMargin : 0.0f);
+    log_info("save: %s (%s); screen %s, quality %s, music %s", save_path_.empty() ? "none" : save_path_.c_str(),
+             loaded_ ? "loaded" : "new", safe_screen_ ? "safe" : "full", opt_.low_quality ? "low" : "high",
+             sound_.music_on() ? "on" : "off");
     if (opt_.touch) input_.touch().set_mouse(true);
     renderer_.warm(static_cast<float>(start_x_), static_cast<float>(start_y_));
     if (menu) mode_ = Mode::Menu;
@@ -223,8 +234,12 @@ void App::pause_input(const Actions& a) {
         } else if (pause_index_ == 2) {
             renderer_.set_low_quality(!renderer_.low_quality());
             write_save_now();
+        } else if (pause_index_ == 3) {
+            safe_screen_ = !safe_screen_;
+            input_.touch().set_margin(safe_screen_ ? kSafeMargin : 0.0f);
+            write_save_now();
         }
-        else if (pause_index_ == 3) { paused_ = false; mode_ = Mode::Menu; }
+        else if (pause_index_ == 4) { paused_ = false; mode_ = Mode::Menu; }
         else quit_ = true;
     }
 }
@@ -686,7 +701,7 @@ void App::draw(int frame) {
     }
     int ww = 0, wh = 0;
     SDL_GL_GetDrawableSize(window_, &ww, &wh);
-    target_.present(ww, wh);
+    target_.present(ww, wh, safe_screen_ ? kSafeMargin : 0.0f);
     SDL_GL_SwapWindow(window_);
 }
 
@@ -992,7 +1007,8 @@ void App::draw_pause() {
         hud_.rect(rx, ry, rw, rh, sel ? kOrange : kPanel);
         if (!sel) hud_.rect(rx, ry + rh - 1, rw, 1, kPanelEdge);
         const std::string label = i == 1 ? (sound_.music_on() ? "MUSIC: ON" : "MUSIC: OFF")
-                                : i == 2 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH") : kPause[i];
+                                : i == 2 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH")
+                                : i == 3 ? (safe_screen_ ? "SCREEN: SAFE" : "SCREEN: FULL") : kPause[i];
         hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 2, label, sel ? kInk : kDim, 2, !sel);
     }
 }
@@ -1097,7 +1113,9 @@ void App::write_save_now() {
     save_.weather = weather_index(renderer_.weather().name);
     save_.low_quality = renderer_.low_quality();
     save_.music = sound_.music_on();
+    save_.screen = safe_screen_ ? 1 : 0;
     if (write_save(save_path_, save_)) loaded_ = true;
+    else log_error("could not write the save (%s)", save_path_.c_str());
 }
 
 }  // namespace amr

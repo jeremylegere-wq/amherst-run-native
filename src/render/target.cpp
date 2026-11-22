@@ -1,3 +1,4 @@
+#include "core/log.h"
 #include "render/target.h"
 
 #include <SDL.h>
@@ -121,7 +122,7 @@ RenderTarget::RenderTarget(int width, int height) : w_(width), h_(height) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     std::string err;
     ink_prog_ = make_program(kInkVertex, kInkFragment, err);
-    if (!ink_prog_) std::fprintf(stderr, "ink shader: %s\n", err.c_str());
+    if (!ink_prog_) log_error("ink shader: %s", err.c_str());
     glGenVertexArrays(1, &vao_);
 }
 
@@ -171,12 +172,13 @@ void RenderTarget::ink(float znear, float zfar, float ink_until, const float rgb
     glActiveTexture(GL_TEXTURE0);
 }
 
-void RenderTarget::present(int window_w, int window_h) {
-    // the biggest 16:9 rectangle that fits, centred; black bars elsewhere
-    int dw = window_w, dh = window_w * h_ / w_;
-    if (dh > window_h) {
-        dh = window_h;
-        dw = window_h * w_ / h_;
+void RenderTarget::present(int window_w, int window_h, float margin) {
+    // the biggest 16:9 rectangle that fits inside the margin, centred; black bars elsewhere
+    const int aw = static_cast<int>(window_w * (1 - 2 * margin)), ah = static_cast<int>(window_h * (1 - 2 * margin));
+    int dw = aw, dh = aw * h_ / w_;
+    if (dh > ah) {
+        dh = ah;
+        dw = ah * w_ / h_;
     }
     const int x0 = (window_w - dw) / 2, y0 = (window_h - dh) / 2;
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

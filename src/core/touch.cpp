@@ -19,11 +19,12 @@ Touch::Touch() {
     };
 }
 
-void Touch::to_picture(float wx, float wy, int window_w, int window_h, float& px, float& py) {
-    int dw = window_w, dh = window_w * kH / kW;
-    if (dh > window_h) {
-        dh = window_h;
-        dw = window_h * kW / kH;
+void Touch::to_picture(float wx, float wy, int window_w, int window_h, float& px, float& py, float margin) {
+    const int aw = static_cast<int>(window_w * (1 - 2 * margin)), ah = static_cast<int>(window_h * (1 - 2 * margin));
+    int dw = aw, dh = aw * kH / kW;
+    if (dh > ah) {
+        dh = ah;
+        dw = ah * kW / kH;
     }
     const float x0 = (window_w - dw) / 2.0f, y0 = (window_h - dh) / 2.0f;
     px = std::clamp((wx - x0) * kW / std::max(1, dw), 0.0f, kW - 0.01f);
@@ -37,7 +38,7 @@ void Touch::handle(const SDL_Event& e, int window_w, int window_h) {
         case SDL_FINGERMOTION:
             finger_seen_ = shown_ = true;
             fingers_.erase(-1);
-            to_picture(e.tfinger.x * window_w, e.tfinger.y * window_h, window_w, window_h, px, py);
+            to_picture(e.tfinger.x * window_w, e.tfinger.y * window_h, window_w, window_h, px, py, margin_);
             fingers_[static_cast<long long>(e.tfinger.fingerId)] = {px, py};
             if (e.type == SDL_FINGERDOWN) taps_.push_back({static_cast<int>(px), static_cast<int>(py)});
             break;
@@ -55,7 +56,7 @@ void Touch::handle(const SDL_Event& e, int window_w, int window_h) {
             const int x = e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x;
             const int y = e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y;
             if (e.type == SDL_MOUSEMOTION && !(e.motion.state & SDL_BUTTON_LMASK)) break;
-            to_picture(static_cast<float>(x), static_cast<float>(y), window_w, window_h, px, py);
+            to_picture(static_cast<float>(x), static_cast<float>(y), window_w, window_h, px, py, margin_);
             fingers_[-1] = {px, py};
             if (e.type == SDL_MOUSEBUTTONDOWN) taps_.push_back({static_cast<int>(px), static_cast<int>(py)});
             break;

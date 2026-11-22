@@ -42,7 +42,8 @@ public:
 
     // Window pixel -> picture pixel through the same 16:9 letterbox as RenderTarget::present (clamped to the
     // picture, so a thumb on a black bar still reaches the buttons at the edge).
-    static void to_picture(float wx, float wy, int window_w, int window_h, float& px, float& py);
+    static void to_picture(float wx, float wy, int window_w, int window_h, float& px, float& py, float margin = 0.0f);
+    void set_margin(float m) { margin_ = m; }  // the screen fit's border (RenderTarget::present)
     static constexpr int kW = 320, kH = 180;
 
 private:
@@ -51,6 +52,7 @@ private:
     std::vector<std::string> pressed_, prev_;
     std::vector<std::pair<int, int>> taps_;
     bool shown_ = false, mouse_ = false, finger_seen_ = false;
+    float margin_ = 0.0f;
 };
 
 }  // namespace amr

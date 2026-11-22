@@ -1,3 +1,4 @@
+#include "core/log.h"
 #include "render/hud.h"
 
 #include <cctype>
@@ -66,7 +67,7 @@ Hud::Hud(int width, int height) : w_(width), h_(height) {
     std::string err;
     program_ = make_program(kVertex, kFragment, err);
     if (!program_) {
-        std::fprintf(stderr, "hud shader: %s\n", err.c_str());
+        log_error("hud shader: %s", err.c_str());
         return;
     }
     glGenVertexArrays(1, &vao_);

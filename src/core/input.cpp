@@ -1,5 +1,7 @@
 #include "core/input.h"
 
+#include "core/log.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -25,7 +27,11 @@ Input::~Input() {
 void Input::open(int device_index) {
     if (!SDL_IsGameController(device_index)) return;
     if (auto* p = SDL_GameControllerOpen(device_index)) {
-        if (std::find(pads_.begin(), pads_.end(), p) == pads_.end()) pads_.push_back(p);
+        if (std::find(pads_.begin(), pads_.end(), p) == pads_.end()) {
+            pads_.push_back(p);
+            const char* name = SDL_GameControllerName(p);
+            log_info("pad %zu: %s", pads_.size(), name ? name : "(no name)");
+        }
     }
 }
 

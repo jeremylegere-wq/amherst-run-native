@@ -9,7 +9,14 @@ Direct3D 11), signs it with a test certificate made fresh for each build, and ke
     AmherstRun_0.1.0.0_x64_Test/AmherstRun_0.1.0.0_x64.cer        its test certificate
     AmherstRun_0.1.0.0_x64_Test/Dependencies/x64/Microsoft.VCLibs.x64.14.00.appx   the C++ runtime it needs
 
-Not yet tried on a console.
+Not yet tried on a console. `INSTALL.txt` (copied into the artifact) is the step-by-step guide: Developer Mode,
+installing through the Device Portal, setting the app type to Game, the controls, and where the log is.
+
+Made for the console:
+- the package's version comes from the CI run number (0.1.<run>.0), so a newer build installs over an older one;
+- the picture keeps a TV-safe border by default (pause menu SCREEN: FULL / SAFE, saved);
+- a log (`log.txt` in the app's LocalState, through the Device Portal's file explorer) with the graphics driver and
+  any error, and a message box for start-up failures; B is the game's (pause / back), not the console's.
 
 ## Installing it on an Xbox One
 

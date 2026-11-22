@@ -1,3 +1,4 @@
+#include "core/log.h"
 #include "render/map_renderer.h"
 
 #include <algorithm>
@@ -221,7 +222,7 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
     std::string err;
     program_ = make_program(kVertex, kFragment, err);
     if (!program_) {
-        std::fprintf(stderr, "map shader: %s\n", err.c_str());
+        log_error("map shader: %s", err.c_str());
         return;
     }
     u_mvp_ = glGetUniformLocation(program_, "u_mvp");
@@ -233,7 +234,7 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
     u_tint_ = glGetUniformLocation(program_, "u_tint");
     u_inked_ = glGetUniformLocation(program_, "u_inked");
     shadow_prog_ = make_program(kShadowVertex, kShadowFragment, err);
-    if (!shadow_prog_) std::fprintf(stderr, "shadow shader: %s\n", err.c_str());
+    if (!shadow_prog_) log_error("shadow shader: %s", err.c_str());
     glGenVertexArrays(1, &shadow_vao_);
     glGenBuffers(1, &shadow_vbo_);
     glBindVertexArray(shadow_vao_);

@@ -17,6 +17,7 @@ struct SaveData {
     int weather = 0;
     bool low_quality = false;
     bool music = true;
+    int screen = -1;    // the screen fit: 0 full, 1 TV-safe border (-1: not chosen yet)
 };
 
 // The save file's path ("" when the system has no place for app data).
