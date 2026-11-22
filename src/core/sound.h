@@ -10,6 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/music.h"
+
 namespace amr {
 
 class Sound {
@@ -21,6 +23,10 @@ public:
     bool ok() const { return dev_ != 0; }
     void play(const std::string& name);
     void pause(bool on) { if (dev_) SDL_PauseAudioDevice(dev_, on ? 1 : 0); }  // the app is in the background
+    // The music (core/music.h), mixed under the effects.
+    void set_music(bool on) { music_.set_on(on); }
+    bool music_on() const { return music_.on(); }
+    void set_chase(bool chase) { music_.set_chase(chase); }  // the player is wanted: the chase layer
     // The samples of an effect (tests: they are made even without a sound device).
     const std::vector<Sint16>* samples(const std::string& name) const;
 
@@ -32,6 +38,7 @@ private:
     };
     std::unordered_map<std::string, std::vector<Sint16>> sounds_;
     std::vector<Voice> voices_;
+    Music music_;
     SDL_AudioDeviceID dev_ = 0;
 };
 

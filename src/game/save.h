@@ -14,6 +14,7 @@ struct SaveData {
     std::vector<std::pair<double, double>> tags;  // tagged spots' positions
     int weather = 0;
     bool low_quality = false;
+    bool music = true;
 };
 
 // The save file's path ("" when the system has no place for app data).

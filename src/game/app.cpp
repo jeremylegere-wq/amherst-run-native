@@ -48,9 +48,9 @@ void rainbow(double h, std::uint8_t out[3]) {
     out[0] = c[i][0]; out[1] = c[i][1]; out[2] = c[i][2];
 }
 constexpr int kMenuCount = sizeof(kMenu) / sizeof(kMenu[0]);
-const char* kPause[] = {"RESUME", "QUALITY", "MAIN MENU", "QUIT"};
+const char* kPause[] = {"RESUME", "MUSIC", "QUALITY", "MAIN MENU", "QUIT"};
 constexpr int kPauseCount = sizeof(kPause) / sizeof(kPause[0]);
-constexpr int kPauseW = 140, kPauseH = 99;  // the pause box
+constexpr int kPauseW = 140, kPauseH = 116;  // the pause box
 
 // Screen rectangles (x, y, w, h) of the players in the 320x180 picture (game/twoplayer.py layout).
 void layout(int n, int i, int& x, int& y, int& w, int& h) {
@@ -118,6 +118,7 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
     }
     renderer_.set_weather(opt_.weather);
     renderer_.set_low_quality(opt_.low_quality);
+    sound_.set_music(!opt_.no_music && (!loaded_ || save_.music));
     if (opt_.touch) input_.touch().set_mouse(true);
     renderer_.warm(static_cast<float>(start_x_), static_cast<float>(start_y_));
     if (menu) mode_ = Mode::Menu;
@@ -217,10 +218,13 @@ void App::pause_input(const Actions& a) {
     if (a.confirm) {
         if (pause_index_ == 0) paused_ = false;
         else if (pause_index_ == 1) {
+            sound_.set_music(!sound_.music_on());
+            write_save_now();
+        } else if (pause_index_ == 2) {
             renderer_.set_low_quality(!renderer_.low_quality());
             write_save_now();
         }
-        else if (pause_index_ == 2) { paused_ = false; mode_ = Mode::Menu; }
+        else if (pause_index_ == 3) { paused_ = false; mode_ = Mode::Menu; }
         else quit_ = true;
     }
 }
@@ -270,6 +274,7 @@ void App::step(double dt) {
             }
         }
     }
+    sound_.set_chase(players_ == 1 && town_->stars() > 0);  // the music's chase layer while wanted
     if (players_ == 1) {
         jobs_->update(dt, *cars_[0]);
         if (tagging_ && jobs_->cash() != save_.cash) write_save_now();  // a job paid, or a fine was taken
@@ -968,7 +973,8 @@ void App::draw_pause() {
         const bool sel = i == pause_index_;
         hud_.rect(rx, ry, rw, rh, sel ? kOrange : kPanel);
         if (!sel) hud_.rect(rx, ry + rh - 1, rw, 1, kPanelEdge);
-        const std::string label = i == 1 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH") : kPause[i];
+        const std::string label = i == 1 ? (sound_.music_on() ? "MUSIC: ON" : "MUSIC: OFF")
+                                : i == 2 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH") : kPause[i];
         hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 2, label, sel ? kInk : kDim, 2, !sel);
     }
 }
@@ -1056,6 +1062,7 @@ void App::write_save_now() {
     }
     save_.weather = weather_index(renderer_.weather().name);
     save_.low_quality = renderer_.low_quality();
+    save_.music = sound_.music_on();
     if (write_save(save_path_, save_)) loaded_ = true;
 }
 

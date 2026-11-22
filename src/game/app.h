@@ -50,6 +50,7 @@ struct Options {
     bool low_quality = false;   // phones: a shorter draw distance, no see-through shadows (the pause menu switches)
     bool tag_test = false;      // test runs: park and hold TAG (the screenshots of a tag being sprayed)
     bool weather_set = false, quality_set = false;  // given on the command line: they win over the saved choice
+    bool no_music = false;      // start with the music off (the pause menu switches it)
     bool no_save = false;       // never read or write the save (test runs never do)
     std::string save_dir;       // keep the save in this folder instead (test runs too)
 };

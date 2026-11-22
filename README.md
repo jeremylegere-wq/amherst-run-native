@@ -23,7 +23,9 @@ weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing); 
 thicker outlines up close, cool-tinted cel shadows, small details that fade with distance, puffy cartoon clouds, a
 view that widens at speed, and the street style's sticker HUD (outlined italic text, slanted bars and chevrons). Tagging (this game's own): 40 spots on commercial walls around town, marked by spinning spray cans and on the
 minimap; pull up beside one and hold TAG (E, pad X, the touch TAG button) to spray your crew's tag for $25, but
-not with police watching. Progress is saved (cash, tags, weather, quality) in the system's app-data folder;
+not with police watching. Original music made in code as it plays: a funky
+breakbeat in E minor with bass, electric-piano stabs and a chiptune hook, and a chase layer while you are wanted
+(MUSIC in the pause menu, `--no-music`). Progress is saved (cash, tags, weather, quality, music) in the system's app-data folder;
 `--no-save` plays without it. Phase 5 (phones): on-screen touch
 buttons (they appear at the first touch; `--touch` shows them on a desktop, worked by the mouse), taps in the menus,
 Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.

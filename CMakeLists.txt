@@ -18,6 +18,7 @@ add_library(amr_core STATIC
   src/core/input.cpp
   src/core/touch.cpp
   src/core/sound.cpp
+  src/core/music.cpp
   src/render/target.cpp
   src/render/shader.cpp
   src/render/mesh.cpp
@@ -107,3 +108,7 @@ set_tests_properties(tagging PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(test_save tests/test_save.cpp)
 target_link_libraries(test_save PRIVATE amr_core)
 add_test(NAME save COMMAND test_save "${CMAKE_CURRENT_BINARY_DIR}")
+
+add_executable(test_music tests/test_music.cpp)
+target_link_libraries(test_music PRIVATE amr_core)
+add_test(NAME music COMMAND test_music)

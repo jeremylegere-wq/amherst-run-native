@@ -35,6 +35,7 @@ bool load_save(const std::string& path, SaveData& out) {
         if (key == "cash") l >> d.cash;
         else if (key == "weather") l >> d.weather;
         else if (key == "quality") { std::string q; l >> q; d.low_quality = q == "low"; }
+        else if (key == "music") { std::string q; l >> q; d.music = q != "off"; }
         else if (key == "tag") {
             double x, y;
             if (l >> x >> y) d.tags.push_back({x, y});
@@ -51,6 +52,7 @@ bool write_save(const std::string& path, const SaveData& d) {
     o << "cash " << d.cash << "\n";
     o << "weather " << d.weather << "\n";
     o << "quality " << (d.low_quality ? "low" : "high") << "\n";
+    o << "music " << (d.music ? "on" : "off") << "\n";
     char line[64];
     for (const auto& t : d.tags) {
         std::snprintf(line, sizeof line, "tag %.2f %.2f\n", t.first, t.second);

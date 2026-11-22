@@ -96,7 +96,7 @@ void Sound::callback(void* self, Uint8* stream, int len) {
     auto* out = reinterpret_cast<Sint16*>(stream);
     const int n = len / 2;
     for (int i = 0; i < n; ++i) {
-        int mix = 0;
+        int mix = static_cast<int>(s->music_.next() * 12500.0f);  // the music, under the effects
         for (Voice& v : s->voices_)
             if (v.pos < v.pcm->size()) mix += (*v.pcm)[v.pos++];
         out[i] = static_cast<Sint16>(std::max(-32768, std::min(32767, mix)));
