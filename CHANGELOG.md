@@ -5,6 +5,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-23
+
+Still an **untested preview** on the Xbox and Android.
+
 ### Fixed
 - The map is amherst-run v1.0.6: the North Nova Scotia Highlanders mural is on the wall facing Ratchford and
   Havelock Streets (it was on the Dominion Building), and graffiti no longer covers a mural.
@@ -29,5 +33,6 @@ The first public build, an **untested preview**: the Xbox and Android builds hav
 - Saved progress, touch controls, a quality setting, a TV-safe screen fit, and a log on the device.
 - An Android APK and a signed Xbox (UWP) package, built in CI.
 
-[Unreleased]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jeremylegere-wq/amherst-run-native/releases/tag/v0.1.0

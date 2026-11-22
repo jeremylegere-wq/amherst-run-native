@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(AmherstRunNative VERSION 0.1.0 LANGUAGES CXX)
+project(AmherstRunNative VERSION 0.1.1 LANGUAGES CXX)
 
 # Amherst Run, native C++ version (see README.md). One dependency: SDL2 (approved). Graphics: OpenGL ES 3.0
 # (system GLES on Linux/Batocera/Android; ANGLE.WindowsStore on Xbox UWP: platform/uwp).
