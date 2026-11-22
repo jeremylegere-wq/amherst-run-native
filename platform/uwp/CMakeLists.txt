@@ -38,6 +38,8 @@ set_source_files_properties(${MAP_FILE} PROPERTIES VS_DEPLOYMENT_CONTENT 1 VS_DE
 add_executable(AmherstRun WIN32 ${GAME_SOURCES} ${WINRT_MAIN} ${CMAKE_CURRENT_SOURCE_DIR}/Package.appxmanifest
                ${TILES} ${MAP_FILE} ${RUNTIME_DLLS})
 target_include_directories(AmherstRun PRIVATE ${GAME_SRC} ${SDL_DIR}/include ${ANGLE_DIR}/Include)
-target_compile_definitions(AmherstRun PRIVATE AMR_VERSION="${AMR_VERSION}" _CRT_SECURE_NO_WARNINGS)
+# (GL_GLEXT_PROTOTYPES: ANGLE.WindowsStore's older GLES headers declare the functions only with it)
+target_compile_definitions(AmherstRun PRIVATE AMR_VERSION="${AMR_VERSION}" _CRT_SECURE_NO_WARNINGS
+                           GL_GLEXT_PROTOTYPES)
 target_compile_options(AmherstRun PRIVATE /W3 /EHsc)
 target_link_libraries(AmherstRun PRIVATE ${SDL_LIB_DIR}/SDL2.lib ${ANGLE_BIN}/libGLESv2.lib ${ANGLE_BIN}/libEGL.lib)
