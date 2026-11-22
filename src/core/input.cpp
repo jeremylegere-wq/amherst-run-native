@@ -6,10 +6,8 @@
 namespace amr {
 
 float stick(Sint16 raw, float dead) {
-    float v = std::max(-1.0f, raw / 32767.0f);
-    float a = std::fabs(v);
-    if (a <= dead) return 0.0f;
-    return std::copysign((a - dead) / (1.0f - dead), v);
+    const float v = std::max(-1.0f, raw / 32767.0f);
+    return std::fabs(v) > dead ? v : 0.0f;  // like game/main.py _joy_axis: the raw value past the dead zone
 }
 
 Input::Input() {
@@ -51,17 +49,31 @@ void Input::handle(const SDL_Event& e) {
 }
 
 Controls Input::poll() {
+    constexpr float kDead = 0.18f;  // game/main.py _DEAD
     Controls c;
     const Uint8* k = SDL_GetKeyboardState(nullptr);
-    c.steer = static_cast<float>((k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D]) - (k[SDL_SCANCODE_LEFT] || k[SDL_SCANCODE_A]));
-    c.throttle = (k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W]) ? 1.0f : 0.0f;
-    c.brake = (k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S]) ? 1.0f : 0.0f;
-    for (auto* p : pads_) {  // any pad drives player 1 for now; the strongest input wins
-        float s = stick(SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_LEFTX));
-        if (std::fabs(s) > std::fabs(c.steer)) c.steer = s;
-        c.throttle = std::max(c.throttle, SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.0f);
-        c.brake = std::max(c.brake, SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f);
+    const float kb_steer = static_cast<float>((k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D]) -
+                                              (k[SDL_SCANCODE_LEFT] || k[SDL_SCANCODE_A]));
+    c.throttle = k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W];
+    c.brake = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
+    c.handbrake = k[SDL_SCANCODE_SPACE];
+    c.bumper = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
+    float pad_steer = 0;
+    for (auto* p : pads_) {  // any pad drives player 1 for now
+        auto btn = [&](SDL_GameControllerButton b) { return SDL_GameControllerGetButton(p, b) != 0; };
+        float ax = stick(SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_LEFTX), kDead);
+        float ay = stick(SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_LEFTY), kDead);  // up is negative
+        if (btn(SDL_CONTROLLER_BUTTON_DPAD_LEFT)) ax = -1;
+        if (btn(SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) ax = 1;
+        if (btn(SDL_CONTROLLER_BUTTON_DPAD_UP)) ay = -1;
+        if (btn(SDL_CONTROLLER_BUTTON_DPAD_DOWN)) ay = 1;
+        if (std::fabs(ax) > std::fabs(pad_steer)) pad_steer = ax;
+        c.throttle = c.throttle || ay < 0 || SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 9830;
+        c.brake = c.brake || ay > 0 || SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 9830;
+        c.handbrake = c.handbrake || btn(SDL_CONTROLLER_BUTTON_A);
+        c.bumper = c.bumper || btn(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) || btn(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
     }
+    c.steer = kb_steer != 0 ? kb_steer : pad_steer;
     c.a = a_;
     c.quit = quit_;
     a_ = false;

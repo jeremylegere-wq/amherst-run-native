@@ -5,9 +5,10 @@ game set in Amherst, Nova Scotia. Homebrew targets: Xbox One in Developer Mode (
 The Python game is the reference; the plan is in its `docs/CPP_PORT_PLAN.md`.
 
 **Status: phase 1 under way.** The real map (terrain, roads, overpass decks, buildings, land use, water) drawn at
-320x180 and scaled up with chunky pixels, and a placeholder box you drive over it with a pad or the keyboard: it
-follows the ground and the decks, but has no proper car physics or collisions yet. The Xbox and Android builds (phase 0)
-are still to do.
+320x180 and scaled up with chunky pixels, and player 1's car (still drawn as a box) with the Python game's arcade
+physics: grip, handbrake, hop, power slides and boosts, the hills' pull, overpass decks, and walls you scrape along.
+It matches the Python game to under a millimetre on its golden drives. Not yet: trees and poles to hit, traffic, the
+car's real shape. The Xbox and Android builds (phase 0) are still to do.
 
 | Target | Status |
 |---|---|
@@ -32,10 +33,14 @@ ctest --test-dir build
 The map is not in this repository. `tools/fetch_map.py` downloads `amherst.amr` and the golden test files from the
 [amherst-run](https://github.com/jeremylegere-wq/amherst-run) release named in `MAP_VERSION` (checking their SHA-256),
 or copies a local bake with `--from-dir ../amherst-run/dist` (made there by `tools/bake_native.py` and
-`tools/golden.py`). The `world` test checks this game's heights against the Python game's on every golden sample.
+`tools/golden.py`). The `world` test checks this game's heights against the Python game's on every golden sample, and the `drive` test
+replays the Python game's scripted drives (into a house, up an overpass, a handbrake turn, a power slide, a hill) and
+checks the car follows the same path.
 
-Controls: left stick steers, RT gas, LT brake/reverse, Back quits (keyboard: arrows or WASD, Esc).
-`--at X,Y --heading DEG` starts at a map point (metres; heading 0 is east, 90 north).
+Controls (as the Python game): left stick or D-pad steers, up is gas, down brakes and reverses (RT/LT work too), A is
+the handbrake, LB/RB hop (hold through a turn at speed to power-slide, let go to boost), Back quits. Keyboard: arrows or
+WASD, Space handbrake, Shift hop, Esc quits.
+`--at X,Y --heading DEG` starts at a map point (metres; the map's y grows south) facing a compass bearing.
 `--frames 120 --screenshot out.bmp` drives itself, saves the 320x180 picture and exits; with
 `SDL_VIDEODRIVER=offscreen` it needs no display (CI uses this).
 

@@ -8,12 +8,17 @@
 
 namespace amr {
 
+// The Python game's controls (game/main.py read_input): left stick or D-pad steers, stick/D-pad up is gas and down
+// is brake/reverse (the triggers work too), A is the handbrake, LB/RB hop (hold through a turn to power-slide).
+// Keyboard: arrows/WASD, Space handbrake, Shift hop, Esc quits.
 struct Controls {
-    float steer = 0;     // -1 left .. +1 right
-    float throttle = 0;  // 0 .. 1
-    float brake = 0;     // 0 .. 1 (also reverse)
-    bool a = false;      // pressed this frame
-    bool quit = false;   // Back / Esc / window closed
+    float steer = 0;          // -1 left .. +1 right
+    bool throttle = false;
+    bool brake = false;       // also reverse
+    bool handbrake = false;
+    bool bumper = false;      // hop / power slide
+    bool a = false;           // A pressed this frame (menus)
+    bool quit = false;        // Back / Esc / window closed
 };
 
 class Input {
@@ -35,7 +40,7 @@ private:
     bool a_ = false, quit_ = false;
 };
 
-// A stick value with a dead zone, rescaled so it still reaches 1 at full tilt.
+// A stick value, 0 inside the dead zone (game/main.py _joy_axis).
 float stick(Sint16 raw, float dead = 0.18f);
 
 }  // namespace amr

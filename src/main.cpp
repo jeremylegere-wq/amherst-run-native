@@ -1,11 +1,10 @@
 // Amherst Run (native): the real Amherst map (baked by amherst-run's tools/bake_native.py) drawn at 320x180 and
-// scaled up with chunky pixels, and a placeholder car you drive over it with a pad or the keyboard. The car follows
-// the ground and the overpass decks; the real arcade physics and collisions come next (docs: amherst-run
-// docs/CPP_PORT_PLAN.md, phase 1).
+// scaled up with chunky pixels, and player 1's car with the Python game's arcade physics: buildings and the map edge
+// stop it, it rides the overpass decks and feels the hills (docs: amherst-run docs/CPP_PORT_PLAN.md, phase 1).
 //
-//   amherst-run                                  play (pad: left stick steer, RT gas, LT brake/reverse, Back quits)
+//   amherst-run                                  play (pad: left stick, A handbrake, LB/RB hop and slide, Back quits)
 //   amherst-run --map path/to/amherst.amr        another map file (default: assets/amherst.amr beside the game)
-//   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing DEG (0 east, 90 north)
+//   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 #include <SDL.h>
 
@@ -22,6 +21,8 @@
 #include "render/map_renderer.h"
 #include "render/palette.h"
 #include "render/target.h"
+#include "sim/car.h"
+#include "sim/collision.h"
 #include "world/map_file.h"
 #include "world/world.h"
 
@@ -33,28 +34,6 @@ namespace {
 
 constexpr int kInternalW = 320, kInternalH = 180;  // the Python game's game/config.py INTERNAL_W/H
 constexpr double kPhysicsHz = 60.0;                 // fixed timestep, as PHYSICS_HZ
-
-// A placeholder car: just enough to feel the pad. Phase 1 ports the real arcade physics (game/car.py).
-struct TestCar {
-    float x = 0, y = 0, z = 0, heading = 0, speed = 0;
-    void step(const amr::Controls& c, float dt, const amr::World& w) {
-        const float accel = 9.0f, brake = 14.0f, drag = 0.35f, max_rev = -6.0f;
-        speed += c.throttle * accel * dt;
-        speed -= c.brake * (speed > 0 ? brake : accel * 0.5f) * dt;
-        speed -= speed * drag * dt;
-        if (speed < max_rev) speed = max_rev;
-        float grip = std::fmin(1.0f, std::fabs(speed) / 6.0f);           // no turning on the spot
-        heading -= c.steer * 1.9f * grip * dt * (speed >= 0 ? 1.0f : -1.0f);
-        const float nx = x + std::cos(heading) * speed * dt, ny = y + std::sin(heading) * speed * dt;
-        if (!w.in_bounds(nx, ny)) {  // the map edge stops you
-            speed = 0;
-            return;
-        }
-        x = nx;
-        y = ny;
-        z = w.height_at(x, y, z + 1.0f);  // on the ground, or on the deck you are driving on
-    }
-};
 
 struct Args {
     int frames = -1;
@@ -94,7 +73,8 @@ bool parse(int argc, char** argv, Args& a) {
             a.at = std::sscanf(argv[++i], "%f,%f", &a.at_x, &a.at_y) == 2;
             if (!a.at) return false;
         } else if (!std::strcmp(argv[i], "--heading") && i + 1 < argc) {
-            a.heading = static_cast<float>(std::atof(argv[++i]) * 3.14159265358979 / 180.0);  // degrees from east
+            const double b = std::atof(argv[++i]) * 3.14159265358979 / 180.0;  // compass bearing: 0 north, 90 east
+            a.heading = static_cast<float>(std::atan2(-std::cos(b), std::sin(b)));  // map y grows south
             a.has_heading = true;
         } else {
             std::fprintf(stderr, "unknown option: %s\n", argv[i]);
@@ -153,11 +133,9 @@ int main(int argc, char** argv) {
                 world.map().source.c_str(),
                 (SDL_GetPerformanceCounter() - t_load) / static_cast<double>(SDL_GetPerformanceFrequency()));
     amr::Input input;
-    TestCar car;
-    car.x = args.at ? args.at_x : world.map().spawn_x;
-    car.y = args.at ? args.at_y : world.map().spawn_y;
-    car.heading = args.has_heading ? args.heading : world.map().spawn_heading;
-    car.z = world.height_at(car.x, car.y, world.ground(car.x, car.y));
+    const float sx = args.at ? args.at_x : world.map().spawn_x, sy = args.at ? args.at_y : world.map().spawn_y;
+    amr::Car car(sx, sy, args.has_heading ? args.heading : world.map().spawn_heading, amr::player_model(0));
+    car.z = world.height_at(sx, sy, world.ground(sx, sy));
     double frame_ms_total = 0, frame_ms_worst = 0;
     long long tris_total = 0;
 
@@ -171,14 +149,18 @@ int main(int argc, char** argv) {
         while (SDL_PollEvent(&e)) input.handle(e);
         amr::Controls c = input.poll();
         if (c.quit) break;
-        if (args.frames >= 0) c = amr::Controls{0.0f, 1.0f, 0.0f, false, false};    // drive itself, straight (CI)
+        amr::CarInput drive{c.throttle, c.brake, c.steer, c.handbrake, c.bumper};
+        if (args.frames >= 0) drive = amr::CarInput{true, false, 0.0, false, false};  // drive itself, straight (CI)
 
         // fixed-timestep simulation; a frame-limited test run steps exactly one 30 fps frame each loop
         Uint64 now = SDL_GetPerformanceCounter();
         acc += args.frames >= 0 ? 1.0 / 30.0 : std::fmin(0.25, (now - last) / freq);
         last = now;
         while (acc >= 1.0 / kPhysicsHz) {
-            car.step(c, static_cast<float>(1.0 / kPhysicsHz), world);
+            const double dt = 1.0 / kPhysicsHz, px = car.x, py = car.y;  // as game/main.py steps the player
+            car.update(dt, drive, world.on_road(car.x, car.y));
+            amr::move_and_slide(car, world, px, py, true);
+            amr::settle_height(car, world, dt);
             acc -= 1.0 / kPhysicsHz;
         }
 
@@ -189,14 +171,18 @@ int main(int argc, char** argv) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         amr::Camera cam;
         const float back = 9.0f;
-        cam.eye = {car.x - std::cos(car.heading) * back, car.y - std::sin(car.heading) * back, car.z + 3.6f};
+        const float cxf = static_cast<float>(car.x), cyf = static_cast<float>(car.y), czf = static_cast<float>(car.z);
+        cam.eye = {cxf - static_cast<float>(std::cos(car.heading)) * back, cyf - static_cast<float>(std::sin(car.heading)) * back,
+                   czf + 3.6f};
         cam.eye.z = std::fmax(cam.eye.z, world.height_at(cam.eye.x, cam.eye.y, cam.eye.z) + 1.5f);  // never in a hill
-        cam.target = {car.x, car.y, car.z + 1.2f};
+        cam.target = {cxf, cyf, czf + 1.2f};
         const amr::FrameStats st = renderer.draw(cam, static_cast<float>(kInternalW) / kInternalH);
-        amr::Mat4 body = amr::translate({car.x, car.y, car.z + 0.05f}) * amr::rotate_z(car.heading);
-        body.at(0, 0) *= 4.2f; body.at(1, 0) *= 4.2f;        // 4.2 x 1.9 x 1.6 m: the yellow SUV's size
-        body.at(0, 1) *= 1.9f; body.at(1, 1) *= 1.9f;
-        body.at(2, 2) = 1.6f;
+        amr::Mat4 body = amr::translate({cxf, cyf, czf + static_cast<float>(car.hop_z) + 0.3f}) *
+                         amr::rotate_z(static_cast<float>(car.heading));
+        const float len = static_cast<float>(car.length), wid = static_cast<float>(car.width);
+        body.at(0, 0) *= len; body.at(1, 0) *= len;          // the car's real size (player 1: 4.6 x 1.9 m)
+        body.at(0, 1) *= wid; body.at(1, 1) *= wid;
+        body.at(2, 2) = 1.65f;
         renderer.draw_box(body, amr::palette::kCarYellow);
         if (args.frames >= 0) {
             glFinish();  // honest timing in test runs: wait for the GPU

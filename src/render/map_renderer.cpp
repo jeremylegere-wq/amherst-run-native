@@ -301,8 +301,13 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
 FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     FrameStats stats;
     if (!program_) return stats;
+    // The map's y grows south (y = -latitude), so x east, y, z up is left-handed: mirror y on the way to the
+    // screen so the town is not drawn back to front, and count clockwise triangles as front faces.
+    Mat4 flip;
+    flip.at(1, 1) = -1;
     const Mat4 proj = perspective(cam.fovy, aspect, 0.5f, kDrawDist + 40.0f);
-    vp_ = proj * look_at(cam.eye, cam.target);
+    vp_ = proj * look_at(transform_point(flip, cam.eye), transform_point(flip, cam.target)) * flip;
+    glFrontFace(GL_CW);
     glUseProgram(program_);
     glUniformMatrix4fv(u_mvp_, 1, GL_FALSE, vp_.m);
     glUniform3f(u_eye_, cam.eye.x, cam.eye.y, cam.eye.z);

@@ -21,7 +21,9 @@ add_library(amr_core STATIC
   src/render/mesh.cpp
   src/render/map_renderer.cpp
   src/world/map_file.cpp
-  src/world/world.cpp)
+  src/world/world.cpp
+  src/sim/car.cpp
+  src/sim/collision.cpp)
 target_include_directories(amr_core PUBLIC src)
 target_link_libraries(amr_core PUBLIC SDL2::SDL2 ${GLES3_LIB})
 if(MSVC)
@@ -45,3 +47,8 @@ set(AMR_MAP "${CMAKE_SOURCE_DIR}/assets/amherst.amr" CACHE FILEPATH "baked map f
 set(AMR_GOLDEN "${CMAKE_SOURCE_DIR}/assets/golden" CACHE PATH "golden files from amherst-run tools/golden.py")
 add_test(NAME world COMMAND test_world "${AMR_MAP}" "${AMR_GOLDEN}/heights.csv")
 set_tests_properties(world PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_drive tests/test_drive.cpp)
+target_link_libraries(test_drive PRIVATE amr_core)
+add_test(NAME drive COMMAND test_drive "${AMR_MAP}" "${AMR_GOLDEN}/drive.csv")
+set_tests_properties(drive PROPERTIES SKIP_RETURN_CODE 77)
