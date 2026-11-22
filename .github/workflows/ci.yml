@@ -148,6 +148,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "package build failed ($LASTEXITCODE)" }
           Copy-Item "$env:RUNNER_TEMP\amherst-run-test.cer" AppPackages\
           Copy-Item platform\uwp\INSTALL.txt AppPackages\
+          Copy-Item THIRD_PARTY_NOTICES.md AppPackages\
           Get-ChildItem -Recurse AppPackages | Select-Object FullName, Length
       - name: Keep the package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

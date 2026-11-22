@@ -4,39 +4,53 @@ The C++ version of [Amherst Run](https://github.com/jeremylegere-wq/amherst-run)
 game set in Amherst, Nova Scotia. Homebrew targets: Xbox One in Developer Mode (UWP), Android, Batocera and desktops.
 The Python game is the reference; the plan is in its `docs/CPP_PORT_PLAN.md`.
 
-**Status: phase 1 under way.** The real map (terrain, roads, overpass decks, buildings, land use, water) drawn at
-320x180 and scaled up with chunky pixels, and player 1's car (still drawn as a box) with the Python game's arcade
-physics: grip, handbrake, hop, power slides and boosts, the hills' pull, overpass decks, walls you scrape along and
-trees and posts you bounce off (all 455,000 of the map's trees, simply drawn). It matches the Python game to under 2 mm
-on its golden drives. Phase 2 has begun: civilian traffic on the road graph (16 cars downtown, fewer on quiet roads),
-driven like the Python game's, stopping at lights and stop signs, giving way, and bumping into you; police who chase
-you when you hit traffic, the wanted stars, damage, BUSTED and WRECKED, and a small HUD. Phase 3 has begun: the jobs
-(Parcel Run to real addresses, Getaway, Heritage Tour, paying fines) with glowing beacons, a timer and an arrow; a
-start screen, a pause screen, split screen for 2-4 players (free roam, no police), and Battle and VS Race with the
-six items; the freight train on the real rail line, and the synthesized sound effects. Phase 4 (the look) has begun:
-the street style's sky, clouds and distant hills, cartoon cars, road paint, kerbs and brick or concrete sidewalks, ink
-outlines, see-through shadows, the landmark props (the border lighthouse, the cenotaph, the dam, the horse), and the
-minimap with the street-name and speed-limit signs; house details (doors, trimmed windows, porches, attic windows,
-dormers, chimneys) on the five house types, shop fronts and sign bands downtown, window ribbons, arched windows,
-cornices, steeples and the clock tower (the map's BDET chunk); the graffiti tags and the two downtown murals (DECO); rounder trees; the hand-placed parked cars; and the
-weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing); ink on every crease (a normal buffer),
-thicker outlines up close, cool-tinted cel shadows, small details that fade with distance, puffy cartoon clouds, a
-view that widens at speed, and the street style's sticker HUD (outlined italic text, slanted bars and chevrons). Tagging (this game's own): 45 walls on commercial buildings around town, marked by spinning spray cans and on the
-minimap; pull up beside one and hold TAG (E, pad X, the touch TAG button) to spray your crew's tag. Blank walls pay
-$25; a rival crew holds about a third of them ($50 to cover); five big pieces on long walls take three sprays ($100);
-and every 2.5 minutes the rivals go over one of your walls somewhere else. Police nearby raise the heat. Original music made in code as it plays: a funky
-breakbeat in E minor with bass, electric-piano stabs and a chiptune hook, and a chase layer while you are wanted
-(MUSIC in the pause menu, `--no-music`). Progress is saved (cash, tags, weather, quality, music) in the system's app-data folder;
-`--no-save` plays without it. Phase 5 (phones): on-screen touch
-buttons (they appear at the first touch; `--touch` shows them on a desktop, worked by the mouse), taps in the menus,
-Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; the Xbox package runs on a dev kit, the APK is not yet tried on a phone.
+> **Untested on real hardware.** The Xbox and Android builds are made by CI and have never been played on a console
+> or a phone. The Linux build runs on a desktop and passes its tests. Expect rough edges; reports (and the log, see
+> below) are welcome.
+
+## Download
+
+Each [release](https://github.com/jeremylegere-wq/amherst-run-native/releases) has:
+
+- `amherst-run-android-debug.apk`: Android 5.0+ (arm64, armv7, x86_64). Allow installs from unknown sources, open it.
+- `amherst-run-xbox-uwp.zip`: Xbox One / Series in Developer Mode. Unzip; `INSTALL.txt` inside is the step-by-step
+  guide (Dev Mode, the Device Portal, setting the app type to Game, the controls).
+
+The latest builds of `main` are also on every CI run's page (Actions > CI > artifacts).
+
+## What is in it
+
+- **The real town**: the Python game's baked map of Amherst (terrain, roads, overpass decks, 6,600 buildings, land use,
+  water, 455,000 trees, the rail line), drawn at 320x180 and scaled up with chunky pixels.
+- **The Python game's driving**: grip, handbrake, hop, power slides and boosts, hills, decks, walls and trees; checked
+  against the Python game's golden drives to under 2 mm.
+- **A living town**: traffic on the road graph that stops at lights and stop signs and gives way; police, wanted stars,
+  damage, BUSTED and WRECKED; the freight train.
+- **The jobs**: Parcel Run to real civic addresses, Getaway, Heritage Tour, fines; split screen for 2-4 players, and
+  Battle and VS Race with six items.
+- **Tagging** (this game's own): 45 walls around town marked by spinning spray cans; pull up beside one and hold TAG
+  (E, pad X, the touch TAG button) to spray your crew's tag. Blank walls pay $25; a rival crew holds about a third
+  ($50 to cover) and goes over one of yours every 2.5 minutes; five big pieces take three sprays ($100). Police nearby
+  raise the heat.
+- **The street look**: cel shading with cool-tinted shadows, ink lines on every crease, see-through hard shadows,
+  house details, shop fronts, steeples, the clock tower, graffiti and murals, puffy clouds, a sticker HUD, and the
+  weather presets (`--weather clear|overcast|fog|golden|snow`, F4).
+- **Music and sound made in code**: an original funky breakbeat with a chase layer while you are wanted, and
+  synthesized effects. No sound files.
+- **Phones and consoles**: touch buttons, Back pauses, pausing in the background, a quality setting, a TV-safe screen
+  fit; progress (cash, walls, settings) is saved; a log for diagnosing problems.
 
 | Target | Status |
 |---|---|
-| Linux (desktop, Batocera) | builds and runs |
-| Xbox One, Developer Mode (UWP) | runs on a dev kit (package 0.1.41.0, 23 Nov 2026); CI builds a signed test package (artifact `amherst-run-xbox-uwp`, guide in `platform/uwp/INSTALL.txt`) |
-| Android | CI builds a debug APK (artifact `amherst-run-android-debug`); not yet tried on a device (see `platform/android/README.md`) |
-| Windows, macOS desktop | should build with CMake; not tried yet |
+| Linux (desktop) | builds, runs, tests pass |
+| Batocera | should run (Linux, SDL2, GLES); untested |
+| Xbox One / Series, Developer Mode (UWP) | CI builds a signed test package; **untested on a console** (`platform/uwp/INSTALL.txt`) |
+| Android | CI builds a debug APK; **untested on a phone** (`platform/android/README.md`) |
+| Windows, macOS desktop | should build with CMake; not tried |
+
+If something goes wrong on a console or a phone, the game writes `log.txt` (and the run before, `log-previous.txt`)
+in its data folder: on the Xbox, the Device Portal's file explorer, LocalAppData > AmherstRun > LocalState >
+AmherstRun > AmherstRun.
 
 ## Build and run (Linux)
 
@@ -86,6 +100,15 @@ Right Shift or Enter; on a pad X or B fires and A or LB/RB hop. After a win, A /
 - The map comes baked from the Python repository (`MAP_VERSION` names the release); world-building code is not
   ported. Everything original: no art, names or sounds from other games.
 
-## Licence
+## Licence and credits
 
-MIT (see LICENSE). Map data (c) OpenStreetMap contributors, and the open data sources credited in the Python game.
+The code is under the MIT License (LICENSE). The builds include SDL2 (zlib licence) and, in the Xbox package, ANGLE
+(BSD licence): see THIRD_PARTY_NOTICES.md. All art, names, music and sounds in the game are original and made in code.
+
+The map (`amherst.amr`, downloaded from the [amherst-run](https://github.com/jeremylegere-wq/amherst-run) releases, not
+kept here) is built from:
+map data (c) OpenStreetMap contributors, under the [Open Database Licence](https://opendatacommons.org/licenses/odbl/);
+the Nova Scotia Road Network, the Nova Scotia Civic Address File, land cover and zoning (Province of Nova Scotia,
+Open Government Licence - Nova Scotia); building heights from Natural Resources Canada's HRDEM LiDAR (NS-NSDNR_2020,
+Open Government Licence - Canada); elevation from Terrain Tiles on AWS (Mapzen; NRCan CDEM and SRTM); and facts from
+the Canadian Register of Historic Places. See the amherst-run README for the full credits.

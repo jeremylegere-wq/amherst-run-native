@@ -2,7 +2,7 @@
 
 CI builds a debug APK on every push (`.github/workflows/ci.yml`, job `android`); download it from the run's
 artifacts (`amherst-run-android-debug`). It holds the game and SDL2 for arm64, armv7 and x86_64 phones and the baked
-map. Not yet tried on a device.
+map. **Untested on a phone**: nobody has played it on one yet.
 
 Controls: touch the screen and the on-screen buttons appear (steer left / right with the left thumb; GAS, BRAKE,
 HAND, HOP and TAG with the right; PAUSE top left); tap a menu item to pick it. A Bluetooth or USB gamepad works too (the
