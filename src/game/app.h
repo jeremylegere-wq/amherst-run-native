@@ -1,0 +1,83 @@
+// The game around the simulation: the start screen, the one-player game (jobs, police, traffic), split screen for
+// 2-4 players (free roam, no police, no damage: game/twoplayer.py) and the pause screen. Fixed 60 Hz physics, one
+// 320x180 picture a frame (split into views for split screen) with the HUD drawn over it.
+#pragma once
+#include <SDL.h>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "core/input.h"
+#include "game/missions.h"
+#include "render/chase_camera.h"
+#include "render/hud.h"
+#include "render/map_renderer.h"
+#include "render/target.h"
+#include "sim/junctions.h"
+#include "sim/roadgraph.h"
+#include "sim/town.h"
+#include "world/world.h"
+
+namespace amr {
+
+struct Options {
+    int frames = -1;            // test runs: drive itself for this many frames, then stop
+    std::string screenshot;     // ... and save the last picture here
+    int players = 0;            // 0: show the start screen (1-4 skip it)
+    bool menu = false;          // show the start screen even in a test run
+    bool at = false, has_heading = false;
+    double at_x = 0, at_y = 0, heading = 0;
+    int traffic = 16;
+    bool cops = true;
+    double heat = 0;
+};
+
+class App {
+public:
+    static constexpr int kW = 320, kH = 180;  // the Python game's game/config.py INTERNAL_W/H
+    App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junctions, const Options& opt);
+    bool ok() const { return renderer_.ok() && target_.ok() && hud_.ok(); }
+    int run();  // until quit (or the test run's frames); returns the exit code
+
+private:
+    enum class Mode { Menu, Single, Split };
+    void start(int players);             // 1: the full game; 2-4: split screen free roam
+    void spawn_players();
+    void respawn(int i);
+    void step(double dt);
+    void draw(int frame);
+    void draw_view(int i, int x, int y, int w, int h);
+    void draw_cars();
+    void hud_single();
+    void hud_split(int i, int x, int y, int w, int h);
+    void draw_menu();
+    void draw_pause();
+    void menu_input(const Actions& a);
+    void pause_input(const Actions& a);
+
+    SDL_Window* window_;
+    World& world_;
+    RoadGraph& graph_;
+    Junctions& junctions_;
+    Options opt_;
+    MapRenderer renderer_;
+    RenderTarget target_;
+    Hud hud_;
+    Input input_;
+    std::unique_ptr<Town> town_;
+    std::unique_ptr<MissionManager> jobs_;
+    std::vector<std::unique_ptr<Car>> cars_;  // the human players
+    std::vector<ChaseCamera> cams_;
+    Mode mode_ = Mode::Menu;
+    int players_ = 1;
+    bool paused_ = false, quit_ = false;
+    int menu_index_ = 0, pause_index_ = 0;
+    double menu_t_ = 0;
+    double start_x_ = 0, start_y_ = 0, start_heading_ = 0;
+    // timing for test runs
+    double ms_total_ = 0, ms_worst_ = 0;
+    long long tris_total_ = 0;
+};
+
+}  // namespace amr

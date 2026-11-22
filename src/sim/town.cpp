@@ -66,7 +66,7 @@ void Town::add_heat(double amount) {
 double Town::player_power() const { return 1.0 - 0.35 * std::min(1.0, damage_ / 100.0); }
 
 void Town::hurt(double impact) {
-    if (state_ == TownState::Playing) damage_ = std::min(100.0, damage_ + std::max(0.0, impact - 3.0) * kDamagePerMs);
+    if (state_ == TownState::Playing && !free_roam_) damage_ = std::min(100.0, damage_ + std::max(0.0, impact - 3.0) * kDamagePerMs);
 }
 
 int Town::local_target(const Car& player) {
@@ -86,6 +86,8 @@ int Town::local_target(const Car& player) {
 bool Town::occupied(double x, double y, const Car& player) const {
     if (world_.in_building(x, y)) return true;
     if (std::fabs(player.x - x) < 9.0 && std::fabs(player.y - y) < 9.0) return true;
+    for (const Car* p : extra_)
+        if (std::fabs(p->x - x) < 9.0 && std::fabs(p->y - y) < 9.0) return true;
     for (const auto& c : cars_)
         if (std::fabs(c->x - x) < 9.0 && std::fabs(c->y - y) < 9.0) return true;
     return false;
@@ -166,7 +168,9 @@ void Town::manage(const Car& player, bool fill) {
         const double dx = c->x - player.x, dy = c->y - player.y, d = std::hypot(dx, dy);
         bool gone;
         if (!c->police) {
-            gone = c->dead || d > kTrafficDespawn;
+            double dmin = d;  // traffic stays while it is near any player
+            for (const Car* p : extra_) dmin = std::min(dmin, std::hypot(c->x - p->x, c->y - p->y));
+            gone = c->dead || dmin > kTrafficDespawn;
         } else {
             gone = c->dead || d > kPoliceDespawn;
             if (heat_ <= 0.0 && state_ == TownState::Playing) {  // standing down: leave when out of the way
@@ -189,8 +193,14 @@ void Town::manage(const Car& player, bool fill) {
     }
     const int n = static_cast<int>(cars_.size()) - police_count();
     int budget = local_target(player) - n;
-    for (int tries = 0; budget > 0 && tries < (fill ? 40 : 8); ++tries)
-        if (spawn_traffic(player, fill ? 30.0 : kSpawnMin, fill ? 190.0 : kSpawnMax)) --budget;
+    for (int tries = 0; budget > 0 && tries < (fill ? 40 : 8); ++tries) {
+        const Car* focus = &player;  // split screen: around a random player
+        if (!extra_.empty()) {
+            const int k = std::uniform_int_distribution<int>(0, static_cast<int>(extra_.size()))(rng_);
+            if (k > 0) focus = extra_[k - 1];
+        }
+        if (spawn_traffic(*focus, fill ? 30.0 : kSpawnMin, fill ? 190.0 : kSpawnMax)) --budget;
+    }
     if (state_ == TownState::Playing && heat_ > 0.0 && spawn_cd_ <= 0.0 && police_count() < std::min(4, stars()))
         if (spawn_police(player)) spawn_cd_ = 2.5;
 }
@@ -202,6 +212,7 @@ void Town::control(double dt, const Car& player) {
         cop_others.push_back(c.get());
     }
     civ_others.push_back(&player);
+    for (const Car* p : extra_) civ_others.push_back(p);
     const bool active = heat_ > 0.0 && state_ == TownState::Playing;
     const double v_cap = 26.0 + 2.5 * std::min(4, stars());
     auto next = [&](int eid) { return graph_.choose_next(eid, rng_); };
@@ -251,7 +262,7 @@ void Town::update_state(double dt, const Car& player) {
     } else {
         busted_t_ = 0.0;
     }
-    if (damage_ >= 100.0) end(TownState::Wrecked, "wrecked");
+    if (damage_ >= 100.0 && !free_roam_) end(TownState::Wrecked, "wrecked");
 }
 
 void Town::update(double dt, Car& player, double wall_impact) {
@@ -284,13 +295,14 @@ void Town::update(double dt, Car& player, double wall_impact) {
     std::vector<Car*> everyone;
     for (auto& c : cars_) everyone.push_back(c.get());
     everyone.push_back(&player);
+    for (Car* p : extra_) everyone.push_back(p);
     for (std::size_t i = 0; i < everyone.size(); ++i)
         for (std::size_t j = i + 1; j < everyone.size(); ++j) {
             Car& a = *everyone[i];
             Car& b = *everyone[j];
             if (std::fabs(a.x - b.x) > 6.0 || std::fabs(a.y - b.y) > 6.0) continue;
             const double imp = collide_cars(a, b);
-            if (imp > 0.8) on_crash(&a, &b, imp, player);
+            if (imp > 0.8 && !free_roam_) on_crash(&a, &b, imp, player);
         }
     update_state(dt, player);
 }

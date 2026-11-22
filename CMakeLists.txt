@@ -29,7 +29,8 @@ add_library(amr_core STATIC
   src/sim/ai.cpp
   src/sim/junctions.cpp
   src/sim/town.cpp
-  src/game/missions.cpp)
+  src/game/missions.cpp
+  src/game/app.cpp)
 target_include_directories(amr_core PUBLIC src)
 target_link_libraries(amr_core PUBLIC SDL2::SDL2 ${GLES3_LIB})
 if(MSVC)

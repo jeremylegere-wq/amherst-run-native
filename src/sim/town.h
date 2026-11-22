@@ -31,6 +31,10 @@ public:
     // hard the player hit a wall or tree this step (m/s), for damage.
     void update(double dt, Car& player, double wall_impact = 0.0);
     void reset();                          // clear everything (after a reset of the player)
+    // Split screen: the other human players (traffic is kept around all of them and bumps into them), and free
+    // roam (no damage, nobody gets wrecked).
+    void set_extra(std::vector<Car*> others) { extra_ = std::move(others); }
+    void set_free_roam(bool on) { free_roam_ = on; }
     bool consume_reset();                  // true once after BUSTED or WRECKED has played out: reset the player
 
     const std::vector<std::unique_ptr<AICar>>& cars() const { return cars_; }
@@ -71,7 +75,8 @@ private:
     double time_ = 0, heat_ = 0, damage_ = 0, state_t_ = 0, busted_t_ = 0, hit_cd_ = 0, spawn_cd_ = 0, lose_t_ = 0;
     double mng_acc_ = 0, ctl_acc_ = 0;
     TownState state_ = TownState::Playing;
-    bool seen_ = false, filled_ = false, reset_flag_ = false;
+    bool seen_ = false, filled_ = false, reset_flag_ = false, free_roam_ = false;
+    std::vector<Car*> extra_;
 };
 
 }  // namespace amr

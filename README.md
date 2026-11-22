@@ -11,8 +11,8 @@ trees and posts you bounce off (all 455,000 of the map's trees, simply drawn). I
 on its golden drives. Phase 2 has begun: civilian traffic on the road graph (16 cars downtown, fewer on quiet roads),
 driven like the Python game's, stopping at lights and stop signs, giving way, and bumping into you; police who chase
 you when you hit traffic, the wanted stars, damage, BUSTED and WRECKED, and a small HUD. Phase 3 has begun: the jobs
-(Parcel Run to real addresses, Getaway, Heritage Tour, paying fines) with glowing beacons, a timer and an arrow.
-Not yet: menus, the cars' real shapes, landmarks,
+(Parcel Run to real addresses, Getaway, Heritage Tour, paying fines) with glowing beacons, a timer and an arrow; a
+start screen, a pause screen, and split screen for 2-4 players (free roam, no police). Not yet: the cars' real shapes, landmarks,
 the street style's detail. The Xbox and Android builds (phase 0) are still to do.
 
 | Target | Status |
@@ -48,8 +48,11 @@ minute of town and checks the cars keep moving on the roads. The `jobs` test che
 and the Heritage Tours against the Python game, and that tours pay and banks start getaways.
 
 Controls (as the Python game): left stick or D-pad steers, up is gas, down brakes and reverses (RT/LT work too), A is
-the handbrake, LB/RB hop (hold through a turn at speed to power-slide, let go to boost), Back quits. Keyboard: arrows or
-WASD, Space handbrake, Shift hop, Esc quits.
+the handbrake, LB/RB hop (hold through a turn at speed to power-slide, let go to boost). Start or Back pauses (resume,
+main menu, quit). Keyboard: arrows or WASD, Space handbrake, Shift hop, Esc or P pauses.
+Split screen: player 1 drives with WASD + Space + Left Shift, player 2 with the arrows + Right Ctrl + Right Shift; pads
+go to the last players first (one pad and two players: the pad drives player 2). Y (or R / Backspace) respawns.
+`--players N` skips the start screen (1 the full game, 2-4 split screen).
 `--heat H` starts wanted (0-4), `--no-cops` turns the police off, `--traffic N` sets the traffic.
 `--at X,Y --heading DEG` starts at a map point (metres; the map's y grows south) facing a compass bearing.
 `--frames 120 --screenshot out.bmp` drives itself, saves the 320x180 picture and exits; with
