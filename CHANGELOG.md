@@ -5,6 +5,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The map is amherst-run v1.0.6: the North Nova Scotia Highlanders mural is on the wall facing Ratchford and
+  Havelock Streets (it was on the Dominion Building), and graffiti no longer covers a mural.
+
 ### Added
 - `--autopilot` (player 1 drives itself along the road graph like traffic) and `--record DIR` (save frames for GIFs).
 - `tools/make_media.sh`, which remakes the README's screenshots and GIFs from the game.
