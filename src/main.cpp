@@ -104,6 +104,9 @@ int main(int argc, char** argv) {
     std::string map_path;
     if (!parse(argc, argv, opt, map_path)) return 2;
     if (map_path.empty()) map_path = default_map();
+#ifdef __WINRT__
+    SDL_SetHint(SDL_HINT_WINRT_HANDLE_BACK_BUTTON, "1");  // Xbox: B is the game's, not the console's "go back"
+#endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {  // (audio starts later, if it can)
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
