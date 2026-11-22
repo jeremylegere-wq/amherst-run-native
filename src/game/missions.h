@@ -62,6 +62,7 @@ public:
     bool current_target(double& x, double& y) const;
     std::vector<Marker> markers() const;
     void abort();
+    void set_cash(int amount) { cash_ = amount; }  // a saved game's
     void add_cash(int amount, const std::string& banner, Rgb8 colour) {  // pay for something else (a tag)
         cash_ += amount;
         say(banner, colour);

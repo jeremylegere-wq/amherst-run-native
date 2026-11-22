@@ -38,6 +38,7 @@ add_library(amr_core STATIC
   src/sim/train.cpp
   src/game/missions.cpp
   src/game/tagging.cpp
+  src/game/save.cpp
   src/game/items.cpp
   src/game/battle.cpp
   src/game/app.cpp)
@@ -102,3 +103,7 @@ add_executable(test_tagging tests/test_tagging.cpp)
 target_link_libraries(test_tagging PRIVATE amr_core)
 add_test(NAME tagging COMMAND test_tagging "${AMR_MAP}")
 set_tests_properties(tagging PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_save tests/test_save.cpp)
+target_link_libraries(test_save PRIVATE amr_core)
+add_test(NAME save COMMAND test_save "${CMAKE_CURRENT_BINARY_DIR}")

@@ -104,6 +104,16 @@ int Tagging::update(double dt, const Car& car, bool holding) {
     return done;
 }
 
+int Tagging::mark_tagged(double x, double y) {
+    for (int i = 0; i < static_cast<int>(spots_.size()); ++i)
+        if (!spots_[i].tagged && std::hypot(spots_[i].x - x, spots_[i].y - y) < 2.0) {
+            spots_[i].tagged = true;
+            ++tagged_;
+            return i;
+        }
+    return -1;
+}
+
 MeshBuilder tag_mesh(const TagSpot& s, unsigned seed) {
     // crew palettes: (ink edge, back plate, letter fill, highlight), all this game's own
     static const std::uint8_t kPalettes[4][4][3] = {

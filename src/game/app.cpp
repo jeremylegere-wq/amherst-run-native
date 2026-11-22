@@ -109,6 +109,13 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
             clouds_.push_back(std::move(c));
         }
     }
+    if (!opt_.save_dir.empty()) save_path_ = opt_.save_dir + "/save.txt";
+    else if (opt_.frames < 0 && !opt_.no_save) save_path_ = save_path();  // test runs never touch the save
+    loaded_ = load_save(save_path_, save_);
+    if (loaded_) {
+        if (!opt_.weather_set) opt_.weather = std::clamp(save_.weather, 0, kWeatherCount - 1);
+        if (!opt_.quality_set) opt_.low_quality = save_.low_quality;
+    }
     renderer_.set_weather(opt_.weather);
     renderer_.set_low_quality(opt_.low_quality);
     if (opt_.touch) input_.touch().set_mouse(true);
@@ -142,6 +149,13 @@ void App::start(int players, int battle) {
     if (players_ == 1 && !battle) {
         tagging_ = std::make_unique<Tagging>(world_);
         tag_meshes_.resize(tagging_->spots().size());
+        if (loaded_) {  // carry on: the saved cash and tags
+            jobs_->set_cash(save_.cash);
+            for (const auto& t : save_.tags) {
+                const int i = tagging_->mark_tagged(t.first, t.second);
+                if (i >= 0) tag_meshes_[i] = std::make_unique<Mesh>(tag_mesh(tagging_->spots()[i], static_cast<unsigned>(i) * 7919u + 3u));
+            }
+        }
     }
     train_ = std::make_unique<Train>(world_.map(), 1, opt_.trains);
     if (opt_.train_in >= 0) train_->set_wait(opt_.train_in);
@@ -202,7 +216,10 @@ void App::pause_input(const Actions& a) {
     if (a.back) { paused_ = false; return; }
     if (a.confirm) {
         if (pause_index_ == 0) paused_ = false;
-        else if (pause_index_ == 1) renderer_.set_low_quality(!renderer_.low_quality());
+        else if (pause_index_ == 1) {
+            renderer_.set_low_quality(!renderer_.low_quality());
+            write_save_now();
+        }
         else if (pause_index_ == 2) { paused_ = false; mode_ = Mode::Menu; }
         else quit_ = true;
     }
@@ -245,14 +262,17 @@ void App::step(double dt) {
                     if (o->police && std::hypot(o->x - car.x, o->y - car.y) < 80.0) seen = true;
                 if (seen) town_->add_heat(0.6);
                 const int n = tagging_->tagged(), total = static_cast<int>(tagging_->spots().size());
-                jobs_->add_cash(Tagging::kPay, n == total ? "ALL TAGGED! THE TOWN IS YOURS" :
+                const bool all = n == total;
+                jobs_->add_cash(Tagging::kPay, all ? "ALL TAGGED! THE TOWN IS YOURS" :
                                 seen ? "TAGGED! THE COPS SAW THAT" : "TAGGED! +$" + std::to_string(Tagging::kPay),
                                 seen ? Rgb8{255, 80, 80} : Rgb8{120, 240, 120});
+                write_save_now();
             }
         }
     }
     if (players_ == 1) {
         jobs_->update(dt, *cars_[0]);
+        if (tagging_ && jobs_->cash() != save_.cash) write_save_now();  // a job paid, or a fine was taken
         if (town_->consume_reset()) {  // after BUSTED or WRECKED: back to the start, fresh car, quiet town
             town_->reset();
             jobs_->abort();
@@ -299,6 +319,7 @@ int App::run() {
         if (a.quit) break;
         if (a.background) {  // a phone put the game away: stop the sound, and come back to the pause screen
             sound_.pause(true);
+            write_save_now();  // (a phone may close it while it is away)
             if (mode_ != Mode::Menu && !paused_) { paused_ = true; pause_index_ = 0; }
         }
         if (a.foreground) sound_.pause(false);
@@ -321,6 +342,7 @@ int App::run() {
         }
         if (a.weather) {  // F4: the next weather; the chunks around the first player are made again at once
             renderer_.set_weather((weather_index(renderer_.weather().name) + 1) % kWeatherCount);
+            write_save_now();
             if (!cars_.empty()) renderer_.warm(static_cast<float>(cars_[0]->x), static_cast<float>(cars_[0]->y));
         }
         if (mode_ == Mode::Menu) {
@@ -345,6 +367,7 @@ int App::run() {
         ++frame;
         if (opt_.frames >= 0 && frame >= opt_.frames) break;
     }
+    write_save_now();
     int code = 0;
     if (opt_.frames > 1)
         std::printf("frames: %d, draw avg %.2f ms, worst %.2f ms, %lld triangles a frame, %zu traffic cars, %d players\n",
@@ -1019,6 +1042,21 @@ void App::draw_tags() {
         renderer_.draw_box(box_model(mx, my, mz + 1.3, spin, 0.56, 0.56, 0.32f), kCap);
         renderer_.draw_box(box_model(mx + std::cos(spin) * 0.3, my + std::sin(spin) * 0.3, mz + 1.42, spin, 0.18, 0.16, 0.14f), kInk);
     }
+}
+
+// Keep the save up to date: the full game's cash and tags (from the game in progress; the last ones otherwise),
+// and the weather and quality chosen.
+void App::write_save_now() {
+    if (save_path_.empty()) return;
+    if (tagging_ && jobs_) {
+        save_.cash = jobs_->cash();
+        save_.tags.clear();
+        for (const TagSpot& sp : tagging_->spots())
+            if (sp.tagged) save_.tags.push_back({sp.x, sp.y});
+    }
+    save_.weather = weather_index(renderer_.weather().name);
+    save_.low_quality = renderer_.low_quality();
+    if (write_save(save_path_, save_)) loaded_ = true;
 }
 
 }  // namespace amr

@@ -11,6 +11,8 @@
 //   amherst-run --no-train | --train-in S        no train | the first train after S seconds (default 50-90)
 //   amherst-run --weather clear|overcast|fog|golden|snow   the weather (F4 changes it while playing)
 //   amherst-run --touch | --quality low|high       on-screen touch buttons (the mouse works them) | phone quality
+//   amherst-run --no-save | --save-dir DIR        neither load nor save progress (cash, tags, weather, quality) |
+//                                                 keep the save in DIR (test runs too)
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 //                                                   (add --menu to picture the start screen instead)
@@ -86,6 +88,7 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
         } else if (!std::strcmp(s, "--weather") && more) {
             a.weather = amr::weather_index(argv[++i]);
             if (a.weather < 0) return false;
+            a.weather_set = true;
         } else if (!std::strcmp(s, "--tag-test")) {
             a.tag_test = true;
         } else if (!std::strcmp(s, "--touch")) {
@@ -94,6 +97,11 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
             const std::string q = argv[++i];
             if (q != "low" && q != "high") return false;
             a.low_quality = q == "low";
+            a.quality_set = true;
+        } else if (!std::strcmp(s, "--no-save")) {
+            a.no_save = true;
+        } else if (!std::strcmp(s, "--save-dir") && more) {
+            a.save_dir = argv[++i];
         } else if (!std::strcmp(s, "--map") && more) {
             map = argv[++i];
         } else if (!std::strcmp(s, "--at") && more) {

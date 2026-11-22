@@ -69,6 +69,11 @@ int main(int argc, char** argv) {
     check(hold(tags, car, 1.2) == 0 && tags.spots()[0].tagged && tags.tagged() == 1, "parked in front, held: tagged");
     check(hold(tags, car, 2.0) == -1 && tags.tagged() == 1, "a tagged spot cannot be tagged again");
 
+    amr::Tagging again(world);  // a saved game: its tags come back by position
+    check(again.mark_tagged(spots[0].x + 0.5, spots[0].y) == 0 && again.tagged() == 1 && again.spots()[0].tagged,
+          "a saved tag is found again by where it is");
+    check(again.mark_tagged(spots[0].x + 50, spots[0].y + 50) == -1, "a saved tag with no spot there is dropped");
+
     const amr::MeshBuilder art = amr::tag_mesh(s, 3);
     bool out = !art.idx.empty(), facing = true;
     for (const auto& v : art.verts) {

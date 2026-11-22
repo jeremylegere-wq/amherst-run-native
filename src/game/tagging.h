@@ -37,6 +37,8 @@ public:
     double progress() const { return progress_ / kSprayTime; }  // 0..1 while spraying
     const std::vector<TagSpot>& spots() const { return spots_; }
     int tagged() const { return tagged_; }
+    // A saved tag: mark the untagged spot within 2 m of (x, y) as done; its index, or -1 (the map moved on).
+    int mark_tagged(double x, double y);
 
 private:
     int find_reach(const Car& car) const;

@@ -14,6 +14,7 @@
 #include "core/sound.h"
 #include "game/battle.h"
 #include "game/missions.h"
+#include "game/save.h"
 #include "game/tagging.h"
 #include "render/car_mesh.h"
 #include "render/chase_camera.h"
@@ -48,6 +49,9 @@ struct Options {
     bool touch = false;         // show the on-screen touch buttons from the start (the mouse works them on a desktop)
     bool low_quality = false;   // phones: a shorter draw distance, no see-through shadows (the pause menu switches)
     bool tag_test = false;      // test runs: park and hold TAG (the screenshots of a tag being sprayed)
+    bool weather_set = false, quality_set = false;  // given on the command line: they win over the saved choice
+    bool no_save = false;       // never read or write the save (test runs never do)
+    std::string save_dir;       // keep the save in this folder instead (test runs too)
 };
 
 class App {
@@ -110,6 +114,10 @@ private:
     std::unique_ptr<Tagging> tagging_;                 // the full game's tag spots (game/tagging.h)
     std::vector<std::unique_ptr<Mesh>> tag_meshes_;    // the player's tags, per spot, once sprayed
     double spray_sound_t_ = 0;
+    std::string save_path_;     // "" : no saving (test runs, --no-save, no place for app data)
+    SaveData save_;             // what was loaded, kept up to date
+    bool loaded_ = false;
+    void write_save_now();      // the current cash, tags and choices
     int battle_kind_ = 0;
     unsigned battle_seed_ = 1;
     std::vector<std::unique_ptr<Car>> cars_;  // the human players
