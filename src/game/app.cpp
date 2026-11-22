@@ -84,6 +84,13 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
     start_y_ = opt.at ? opt.at_y : world.map().spawn_y;
     start_heading_ = opt.has_heading ? opt.heading : world.map().spawn_heading;
     const bool menu = opt.menu || (opt.players == 0 && opt.battle == 0 && opt.frames < 0);
+    for (const Building& b : world_.map().buildings) {  // the clock tower's faces, on the building's highest corner
+        if (!(b.detail.flags & kClockTower)) continue;
+        float hi = -1e9f, cx = 0, cy = 0;
+        for (const Point2& q : b.points) { hi = std::max(hi, world_.ground(q.x, q.y)); cx += q.x; cy += q.y; }
+        hi = std::max(hi, world_.ground(cx / b.points.size(), cy / b.points.size()));
+        for (const ClockFace& f : clock_faces(b, hi)) clock_faces_.push_back(f);
+    }
     renderer_.set_weather(opt_.weather);
     renderer_.set_low_quality(opt_.low_quality);
     if (opt_.touch) input_.touch().set_mouse(true);
@@ -492,6 +499,7 @@ void App::draw_view(int i, int x, int y, int w, int h) {
     draw_shadows(cam);
     draw_cars();
     draw_train();
+    draw_clock_hands();
     if (battle_) draw_battle_things(i);
     if (mode_ == Mode::Single) {
         for (const Marker& mk : jobs_->markers()) {  // job beacons: a glowing column and a pad on the ground
@@ -863,6 +871,28 @@ void App::draw_touch() {
         const std::string label = b.label;
         hud_.text(b.x + (b.w - hud_.text_width(label, scale)) / 2, b.y + (b.h - 5 * scale) / 2, label,
                   down ? kInk : palette::kHudText, scale, !down);
+    }
+}
+
+// The clock tower's hands (game/render3d.py _draw_clock_tower): one minute a second of game time from nine o'clock,
+// thin dark bars from the middle of each face.
+void App::draw_clock_hands() {
+    const double t = town_ ? town_->time() : menu_t_;
+    const double minutes = std::fmod(t, 60.0), hours = std::fmod(9.0 + t / 60.0, 12.0);
+    for (const ClockFace& f : clock_faces_) {
+        const float ux = f.ny, uy = -f.nx;  // the viewer's right on this face
+        for (const auto& hand : {std::pair<double, float>{hours / 12.0, 0.75f}, {minutes / 60.0, 1.15f}}) {
+            const float a = static_cast<float>(hand.first * 2 * 3.14159265358979);
+            const Vec3 dir{ux * std::sin(a), uy * std::sin(a), std::cos(a)};  // up the face at twelve o'clock
+            const Vec3 across = normalize(cross(Vec3{f.nx, f.ny, 0}, dir));
+            Mat4 m;
+            // the unit box: x across the hand (-0.5..0.5), y out of the face, z along the hand (0..1)
+            m.at(0, 0) = across.x * 0.12f; m.at(1, 0) = across.y * 0.12f; m.at(2, 0) = across.z * 0.12f;
+            m.at(0, 1) = f.nx * 0.05f;     m.at(1, 1) = f.ny * 0.05f;     m.at(2, 1) = 0.0f;
+            m.at(0, 2) = dir.x * hand.second; m.at(1, 2) = dir.y * hand.second; m.at(2, 2) = dir.z * hand.second;
+            m.at(0, 3) = f.x;              m.at(1, 3) = f.y;              m.at(2, 3) = f.z;
+            renderer_.draw_box(m, kInk);
+        }
     }
 }
 

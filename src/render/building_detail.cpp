@@ -22,7 +22,6 @@ constexpr std::uint8_t kSlate[3] = {64, 70, 104};
 constexpr std::uint8_t kClockFace[3] = {252, 250, 236};
 constexpr std::uint8_t kBrick[3] = {176, 72, 56};
 constexpr std::uint8_t kChimneyCap[3] = {70, 60, 58};
-constexpr std::uint8_t kHands[3] = {22, 18, 40};
 
 constexpr float kWallPiece = 12.0f;  // long walls get their window ribbons in pieces this long (render3d WALL_PIECE)
 
@@ -364,7 +363,7 @@ void steeple(MeshBuilder& m, const Building& b, float hi) {
     centre_axis(b, cx, cy, axis);
     const std::uint8_t wall[3] = {b.wall.r, b.wall.g, b.wall.b};
     const float h = b.height;
-    if (b.detail.flags & kClockTower) {  // _draw_clock_tower (the hands stand at nine o'clock)
+    if (b.detail.flags & kClockTower) {  // _draw_clock_tower (its moving hands: App::draw_clock_hands)
         const Frame f = heading_frame(cx, cy, axis, hi);
         const float half = 2.4f, top = h + 8.5f;
         box(m, f, -half, half, -half, half, h - 0.5f, top, wall, wall);
@@ -381,14 +380,6 @@ void steeple(MeshBuilder& m, const Building& b, float hi) {
                 disc.push_back({fx + ux * 1.4f * std::cos(a), fy + uy * 1.4f * std::cos(a), hi + zc + 1.4f * std::sin(a)});
             }
             polygon(m, disc, n, kClockFace);
-            const float hx = fx + n.x * 0.03f, hy = fy + n.y * 0.03f;
-            auto hand = [&](float dx, float dz, float wx, float wz) {  // a thin dark bar from the middle
-                face(m, Vec3{hx - ux * wx, hy - uy * wx, hi + zc - wz}, Vec3{hx + ux * wx, hy + uy * wx, hi + zc + wz},
-                     Vec3{hx + ux * (wx + dx), hy + uy * (wx + dx), hi + zc + wz + dz},
-                     Vec3{hx + ux * (dx - wx), hy + uy * (dx - wx), hi + zc + dz - wz}, n, kHands);
-            };
-            hand(0.0f, 1.15f, 0.06f, 0.0f);   // minute hand up
-            hand(-0.75f, 0.0f, 0.0f, 0.06f);  // hour hand at nine
         }
         return;
     }
@@ -430,6 +421,18 @@ void steeple(MeshBuilder& m, const Building& b, float hi) {
 }
 
 }  // namespace
+
+std::vector<ClockFace> clock_faces(const Building& b, float hi) {
+    std::vector<ClockFace> out;
+    if (!(b.detail.flags & kClockTower)) return out;
+    float cx, cy, axis = 0;
+    centre_axis(b, cx, cy, axis);
+    const Frame f = heading_frame(cx, cy, axis, hi);
+    const float half = 2.4f, zc = hi + b.height + 8.5f - 2.6f;
+    for (Vec3 n : {f.F(), f.R(), f.F() * -1.0f, f.R() * -1.0f})
+        out.push_back({cx + n.x * (half + 0.08f), cy + n.y * (half + 0.08f), zc, n.x, n.y});
+    return out;
+}
 
 void add_attic_window(MeshBuilder& m, const Vec3 tri[3], Vec3 n) {
     const Vec3 a = tri[0], b = tri[1], top = tri[2];

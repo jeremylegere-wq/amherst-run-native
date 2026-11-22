@@ -15,6 +15,7 @@
 #include "game/missions.h"
 #include "render/car_mesh.h"
 #include "render/chase_camera.h"
+#include "render/building_detail.h"
 #include "render/hud.h"
 #include "render/map_renderer.h"
 #include "render/minimap.h"
@@ -74,6 +75,8 @@ private:
     void draw_menu();
     void draw_pause();
     void draw_touch();
+    void draw_clock_hands();
+    std::vector<ClockFace> clock_faces_;  // the clock tower's faces (render/building_detail.h)
     void menu_input(const Actions& a);
     void pause_input(const Actions& a);
 
