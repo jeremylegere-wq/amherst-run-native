@@ -23,6 +23,8 @@ add_library(amr_core STATIC
   src/render/map_renderer.cpp
   src/render/hud.cpp
   src/render/car_mesh.cpp
+  src/render/minimap.cpp
+  src/render/landmarks.cpp
   src/world/map_file.cpp
   src/world/world.cpp
   src/sim/car.cpp

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 
+#include "render/landmarks.h"
 #include "render/palette.h"
 #include "render/shader.h"
 
@@ -44,12 +45,24 @@ uniform float u_inked;  // 1 for buildings, cars and props (they get ink outline
 out vec4 o_color;
 void main() {
     vec3 n = normalize(v_normal);
-    float d = dot(n, normalize(vec3(0.45, -0.3, 0.85)));
+    float d = dot(n, normalize(vec3(-0.45, 0.40, 0.80)));   // the sun (game/render3d.py LIGHT, map y south)
     float lit = n.z > 0.9 ? 1.0 : (d > 0.25 ? 0.95 : 0.66);   // flat ground stays its own colour
     float dist = distance(v_world, u_eye);
     float fog = floor(clamp((dist - u_fog_range.x) / (u_fog_range.y - u_fog_range.x), 0.0, 1.0) * 4.0) / 4.0;
     o_color = vec4(mix(v_color * u_tint * lit, u_fog, fog), u_inked);
 }
+)";
+
+const char* kShadowVertex = R"(#version 300 es
+layout(location = 0) in vec3 a_pos;
+uniform mat4 u_mvp;
+void main() { gl_Position = u_mvp * vec4(a_pos, 1.0); }
+)";
+const char* kShadowFragment = R"(#version 300 es
+precision mediump float;
+uniform vec4 u_rgba;
+out vec4 o_color;
+void main() { o_color = u_rgba; }
 )";
 
 constexpr float kPiece = 4.0f;      // roads, decks and big areas are cut into pieces this long to follow the ground
@@ -199,6 +212,15 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
     u_fog_range_ = glGetUniformLocation(program_, "u_fog_range");
     u_tint_ = glGetUniformLocation(program_, "u_tint");
     u_inked_ = glGetUniformLocation(program_, "u_inked");
+    shadow_prog_ = make_program(kShadowVertex, kShadowFragment, err);
+    if (!shadow_prog_) std::fprintf(stderr, "shadow shader: %s\n", err.c_str());
+    glGenVertexArrays(1, &shadow_vao_);
+    glGenBuffers(1, &shadow_vbo_);
+    glBindVertexArray(shadow_vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, shadow_vbo_);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    glBindVertexArray(0);
     const auto& m = world_.map();
     water_level_.resize(m.polys.size(), 0.0f);
     for (std::size_t i = 0; i < m.polys.size(); ++i) {
@@ -220,6 +242,9 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
 }
 
 MapRenderer::~MapRenderer() {
+    if (shadow_vbo_) glDeleteBuffers(1, &shadow_vbo_);
+    if (shadow_vao_) glDeleteVertexArrays(1, &shadow_vao_);
+    if (shadow_prog_) glDeleteProgram(shadow_prog_);
     if (program_) glDeleteProgram(program_);
 }
 
@@ -323,7 +348,14 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
         }
     }
 
-    MeshBuilder o, s, ar;
+    MeshBuilder o, s, ar, sh;
+    const float sdx = 0.45f, sdy = -0.4f;  // game/render3d.py SHADOW_DIR: metres of shadow per metre of height
+    auto shadow_fan = [&](const std::vector<std::pair<float, float>>& poly) {  // a convex polygon on the ground
+        if (poly.size() < 3) return;
+        std::vector<std::uint32_t> idx;
+        for (const auto& q : poly) idx.push_back(sh.add({q.first, q.second, T.mesh_height(q.first, q.second) + 0.2f}, Vec3{0, 0, 1}, palette::kInk));
+        for (std::size_t k = 1; k + 1 < idx.size(); ++k) sh.tri(idx[0], idx[k], idx[k + 1]);
+    };
     const Vec3 up{0, 0, 1};
     auto items = items_.find(key(cx, cy));
     if (items != items_.end()) {
@@ -441,6 +473,29 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 cym /= p.size();
                 hi = std::max(hi, world_.ground(cxm, cym));
                 const float base = lo - 0.3f, top = hi + bd.height;
+                {  // its shadow: the footprint and the footprint moved away from the sun, their convex hull
+                    std::vector<std::pair<float, float>> pts;
+                    for (const Point2& q : p) {
+                        pts.push_back({q.x, q.y});
+                        pts.push_back({q.x + sdx * bd.height, q.y + sdy * bd.height});
+                    }
+                    std::sort(pts.begin(), pts.end());
+                    pts.erase(std::unique(pts.begin(), pts.end()), pts.end());
+                    auto turn = [](const std::pair<float, float>& o2, const std::pair<float, float>& a2, const std::pair<float, float>& c2) {
+                        return (a2.first - o2.first) * (c2.second - o2.second) - (a2.second - o2.second) * (c2.first - o2.first);
+                    };
+                    std::vector<std::pair<float, float>> hull;
+                    for (int pass = 0; pass < 2; ++pass) {
+                        const std::size_t start = hull.size();
+                        for (std::size_t i2 = 0; i2 < pts.size(); ++i2) {
+                            const auto& q = pass == 0 ? pts[i2] : pts[pts.size() - 1 - i2];
+                            while (hull.size() >= start + 2 && turn(hull[hull.size() - 2], hull.back(), q) <= 0) hull.pop_back();
+                            hull.push_back(q);
+                        }
+                        hull.pop_back();
+                    }
+                    shadow_fan(hull);
+                }
                 const std::uint8_t wall[3] = {bd.wall.r, bd.wall.g, bd.wall.b};
                 for (std::size_t k = 0; k < p.size(); ++k) {
                     Point2 a = p[k], b = p[(k + 1) % p.size()];
@@ -503,6 +558,10 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 const std::uint8_t mine[3] = {p.colour.r, p.colour.g, p.colour.b};
                 if (kind == "tree") {
                     tree(s, p.x, p.y, g, p.h, p.r, p.c);
+                    const float ox = p.x + sdx * p.h * 0.6f, oy = p.y + sdy * p.h * 0.6f, rr = p.r * 0.9f;
+                    std::vector<std::pair<float, float>> oct8;
+                    for (int k2 = 0; k2 < 8; ++k2) oct8.push_back({ox + rr * std::cos(k2 * 0.7853982f), oy + rr * std::sin(k2 * 0.7853982f)});
+                    shadow_fan(oct8);
                 } else if (kind == "lamp") {
                     prop_box(s, p.x, p.y, g, 0.08f, 0.08f, p.h, 0, palette::kLamp);
                 } else if (kind == "pole") {
@@ -529,7 +588,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                                              : (kind == "signal" ? palette::kSignalBox : palette::kWhite);
                     prop_box(s, p.x, p.y, g + std::max(2.2f, p.h) - 0.3f, 0.3f, 0.06f, 0.6f, p.heading, head);
                 }
-                // car_block (invisible), cenotaph, lighthouse, dam, horse: drawn later (phase 4)
+                else add_landmark(s, kind, p, g);  // the lighthouse, cenotaph, dam and horse (car_block: invisible)
             } else {  // an area triangle (land use, park, lot, water), split to follow the ground
                 const Poly& P = m.polys[it.index];
                 const Tri t = P.tris[it.sub];
@@ -565,6 +624,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
     }
     out.ground.upload(g);
     out.areas.upload(ar);
+    out.shadows.upload(sh);
     out.overlay.upload(o);
     out.solid.upload(s);
 }
@@ -606,7 +666,8 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
             wanted.push_back({d, {cx, cy}});
         }
     std::sort(wanted.begin(), wanted.end());
-    std::vector<Chunk*> visible;
+    std::vector<Chunk*>& visible = visible_;
+    visible.clear();
     for (const auto& w : wanted)  // the nearest missing ones are built first; far ones may wait a frame or two
         if (Chunk* c = chunk(w.second.first, w.second.second, stats, stats.chunks_built < kBuildsPerFrame))
             visible.push_back(c);
@@ -637,6 +698,36 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     glUniform1f(u_inked_, 1.0f);  // what is drawn after (cars, the train, beacons) gets ink
     stats.chunks_drawn = static_cast<int>(visible.size());
     return stats;
+}
+
+void MapRenderer::draw_shadows(const std::vector<float>& tris, const std::uint8_t rgba[4]) {
+    if (!shadow_prog_) return;
+    glUseProgram(shadow_prog_);
+    glUniformMatrix4fv(glGetUniformLocation(shadow_prog_, "u_mvp"), 1, GL_FALSE, vp_.m);
+    glUniform4f(glGetUniformLocation(shadow_prog_, "u_rgba"), rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f,
+                rgba[3] / 255.0f);
+    glBindVertexArray(shadow_vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, shadow_vbo_);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(tris.size() * sizeof(float)), tris.data(), GL_STREAM_DRAW);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);  // keep the ink mask in alpha as it is
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_STENCIL_TEST);  // each pixel once: overlapping shadows do not get darker
+    glStencilFunc(GL_EQUAL, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.0f, -8.0f);
+    if (!tris.empty()) glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(tris.size() / 3));
+    for (Chunk* c : visible_) c->shadows.draw();  // the buildings' and trees' (same program: position only)
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_STENCIL_TEST);
+    glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+    glBindVertexArray(0);
 }
 
 void MapRenderer::draw_mesh(const Mesh& mesh, const Mat4& model) {

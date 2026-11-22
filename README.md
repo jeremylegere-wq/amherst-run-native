@@ -14,7 +14,9 @@ you when you hit traffic, the wanted stars, damage, BUSTED and WRECKED, and a sm
 (Parcel Run to real addresses, Getaway, Heritage Tour, paying fines) with glowing beacons, a timer and an arrow; a
 start screen, a pause screen, split screen for 2-4 players (free roam, no police), and Battle and VS Race with the
 six items; the freight train on the real rail line, and the synthesized sound effects. Phase 4 (the look) has begun:
-the street style's sky and clouds, cartoon cars, road paint, kerbs and brick or concrete sidewalks, and ink outlines.
+the street style's sky, clouds and distant hills, cartoon cars, road paint, kerbs and brick or concrete sidewalks, ink
+outlines, see-through shadows, the landmark props (the border lighthouse, the cenotaph, the dam, the horse), and the
+minimap with the street-name and speed-limit signs.
 Not yet: the cars' real shapes, landmarks,
 the street style's detail. The Xbox and Android builds (phase 0) are still to do.
 

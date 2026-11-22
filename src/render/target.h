@@ -27,6 +27,7 @@ public:
     void ink(float znear, float zfar, float ink_until, const float rgb[3], bool enabled = true);
     void present(int window_w, int window_h);      // scale the final picture up into the window
     bool save_bmp(const std::string& path);        // the final picture as a .bmp (tests, screenshots)
+    unsigned final_fbo() const { return fbo2_; }   // the final picture's framebuffer (the HUD and minimap draw into it)
 
 private:
     int w_, h_;

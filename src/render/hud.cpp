@@ -1,6 +1,7 @@
 #include "render/hud.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 
 #include "render/shader.h"
@@ -100,8 +101,8 @@ void Hud::vgrad(int x, int y, int w, int h, const std::uint8_t top[3], const std
 
 int Hud::text_width(const std::string& s, int scale) const { return s.empty() ? 0 : static_cast<int>(s.size()) * 4 * scale - scale; }
 
-void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], int scale) {
-    for (int pass = 0; pass < 2; ++pass) {  // shadow first, one dot down and right
+void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], int scale, bool shadow) {
+    for (int pass = shadow ? 0 : 1; pass < 2; ++pass) {  // shadow first, one dot down and right
         const std::uint8_t* col = pass == 0 ? kShadow : rgb;
         const int off = pass == 0 ? scale : 0;
         int cx = x;
@@ -118,6 +119,18 @@ void Hud::text(int x, int y, const std::string& s, const std::uint8_t rgb[3], in
 void Hud::tri(float x0, float y0, float x1, float y1, float x2, float y2, const std::uint8_t rgb[3]) {
     const float r = rgb[0] / 255.0f, g = rgb[1] / 255.0f, b = rgb[2] / 255.0f;
     verts_.insert(verts_.end(), {x0, y0, r, g, b, x1, y1, r, g, b, x2, y2, r, g, b});
+}
+
+void Hud::line(float x0, float y0, float x1, float y1, float width, const std::uint8_t rgb[3]) {
+    float dx = x1 - x0, dy = y1 - y0;
+    const float l = std::sqrt(dx * dx + dy * dy);
+    if (l < 1e-4f) return;
+    dx /= l;
+    dy /= l;
+    const float hw = width / 2, nx = -dy * hw, ny = dx * hw;
+    x0 -= dx * hw; y0 -= dy * hw; x1 += dx * hw; y1 += dy * hw;
+    tri(x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, rgb);
+    tri(x0 + nx, y0 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, rgb);
 }
 
 void Hud::end() {

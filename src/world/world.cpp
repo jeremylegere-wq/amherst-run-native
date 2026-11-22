@@ -48,7 +48,7 @@ World::World(MapData data) : map_(std::move(data)) {
     for (const Road& r : map_.roads)
         for (std::size_t i = 0; i + 1 < r.points.size(); ++i) {
             const Point2 a = r.points[i], b = r.points[i + 1];
-            const Seg s{a.x, a.y, b.x, b.y, r.width};
+            const Seg s{a.x, a.y, b.x, b.y, r.width, static_cast<int>(&r - map_.roads.data())};
             for_cells(std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x), std::max(a.y, b.y),
                       [&](long long k) { road_cells_[k].push_back(s); });
         }
@@ -128,6 +128,39 @@ bool World::on_road(double x, double y) const {
                 if (seg_dist(x, y, s.ax, s.ay, s.bx, s.by) <= s.w / 2.0) return true;
         }
     return in_lot(x, y);
+}
+
+int World::road_at(double x, double y, double z) const {
+    const float fx = static_cast<float>(x), fy = static_cast<float>(y);
+    z -= ground(fx, fy);  // heights below are relative to the ground
+    const int cx = static_cast<int>(std::floor(x / kCell)), cy = static_cast<int>(std::floor(y / kCell));
+    int best = -1;
+    double best_d = 0;
+    for (int gx = cx - 1; gx <= cx + 1; ++gx)
+        for (int gy = cy - 1; gy <= cy + 1; ++gy) {
+            auto it = road_cells_.find(cell_key(gx, gy));
+            if (it == road_cells_.end()) continue;
+            for (const Seg& sg : it->second) {
+                double d = seg_dist(x, y, sg.ax, sg.ay, sg.bx, sg.by) - sg.w / 2.0;
+                if (d > 1.5) continue;
+                const Road& r = map_.roads[sg.road];
+                if (r.type == kLane && r.service != kNoService) d += 3.0;  // a street beats a driveway
+                if (r.flags & kDeck) {  // an overpass deck: only counts when the car is up there
+                    double h = -1;
+                    auto sc = span_cells_.find(cell_key(static_cast<int>(std::floor(x / kCell)), static_cast<int>(std::floor(y / kCell))));
+                    if (sc != span_cells_.end())
+                        for (int i : sc->second) {
+                            const float sh = span_height(map_.spans[i], fx, fy);
+                            if (sh >= 0) { h = sh; break; }
+                        }
+                    d += h >= 0 ? std::fabs(z - h) * 0.5 : 9.0;
+                } else if (z > 2.5) {
+                    d += (z - 2.5) * 0.5;  // up on a deck: the road below is not the one we are on
+                }
+                if (best < 0 || d < best_d) { best = sg.road; best_d = d; }
+            }
+        }
+    return best;
 }
 
 bool World::in_lot(double x, double y) const {

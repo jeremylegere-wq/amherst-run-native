@@ -1,5 +1,6 @@
 // Height queries on the baked map: the ground, and overpass decks over it (game/world.py height_at / sp_height).
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
 #include <vector>
@@ -25,6 +26,23 @@ public:
     bool on_road(double x, double y) const;
     bool in_lot(double x, double y) const;
     bool in_building(double x, double y) const;
+    // The road under (x, y) (index into map().roads, -1 off-road). On an overpass, z picks the deck or the road
+    // below (world.py road_at): a street beats a driveway, a deck only counts when the car is up there.
+    int road_at(double x, double y, double z) const;
+    // Buildings whose box touches the square of half-size r around (x, y) (each once).
+    template <typename F>
+    void buildings_near(double x, double y, double r, F f) const {
+        std::vector<int> seen;
+        for (int gx = static_cast<int>(std::floor((x - r) / 40.0)); gx <= static_cast<int>(std::floor((x + r) / 40.0)); ++gx)
+            for (int gy = static_cast<int>(std::floor((y - r) / 40.0)); gy <= static_cast<int>(std::floor((y + r) / 40.0)); ++gy) {
+                auto it = building_cells_.find((static_cast<long long>(gx) << 32) ^ static_cast<unsigned>(gy));
+                if (it == building_cells_.end()) continue;
+                for (int i : it->second) seen.push_back(i);
+            }
+        std::sort(seen.begin(), seen.end());
+        seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+        for (int i : seen) f(map_.buildings[i]);
+    }
     // Props within r of (x, y) (a square test, like world.py props_near).
     template <typename F>
     void props_near(double x, double y, double r, F f) const {
@@ -46,6 +64,7 @@ public:
 private:
     struct Seg {
         float ax, ay, bx, by, w;
+        int road;
     };
     MapData map_;
     std::unordered_map<long long, std::vector<int>> span_cells_;      // 40 m cell -> spans touching it

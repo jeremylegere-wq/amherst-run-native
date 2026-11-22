@@ -41,6 +41,10 @@ public:
     FrameStats draw(const Camera& cam, float aspect);
     // Build every chunk within view distance of (x, y) now (at the start, so the first frames do not stutter).
     void warm(float x, float y);
+    // See-through hard shadows (the street style): triangles (x, y, z each) in one colour, each pixel shaded once
+    // however many overlap (the stencil), not over what stands above them. Call after draw(), before the cars.
+    // The cars' shadows are passed in each frame; the buildings' and trees' are in the chunks drawn last.
+    void draw_shadows(const std::vector<float>& tris, const std::uint8_t rgba[4]);
     // Draw a mesh made in its own frame, placed by `model` (cars).
     void draw_mesh(const Mesh& mesh, const Mat4& model);
     // Draw the unit box (the placeholder car) with the same lighting and fog; `model` places and sizes it.
@@ -55,6 +59,7 @@ private:
         Mesh areas;     // land use, lots, water: painted on the ground, under the roads
         Mesh overlay;   // roads (drawn with a depth offset over the ground and the areas)
         Mesh solid;     // buildings and overpass decks
+        Mesh shadows;   // the buildings' and trees' shadows (they never move)
     };
     struct Item {       // something that belongs to a chunk: (kind, index, sub-index)
         int kind, index, sub;
@@ -72,6 +77,8 @@ private:
     std::unordered_map<long long, std::vector<Item>> items_;  // what each chunk holds, sorted out at start
     std::vector<float> water_level_;                          // per polygon: the level water lies at
     Mesh box_;                                                // unit box (the placeholder car)
+    std::vector<Chunk*> visible_;                             // the chunks drawn this frame (their shadows too)
+    unsigned shadow_prog_ = 0, shadow_vao_ = 0, shadow_vbo_ = 0;
 };
 
 }  // namespace amr

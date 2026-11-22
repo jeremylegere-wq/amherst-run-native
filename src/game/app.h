@@ -17,6 +17,8 @@
 #include "render/chase_camera.h"
 #include "render/hud.h"
 #include "render/map_renderer.h"
+#include "render/minimap.h"
+#include "game/street.h"
 #include "render/target.h"
 #include "sim/junctions.h"
 #include "sim/roadgraph.h"
@@ -58,6 +60,7 @@ private:
     void draw_view(int i, int x, int y, int w, int h);
     void draw_cars();
     void draw_train();
+    void draw_shadows(const Camera& cam);
     void draw_sky(const Camera& cam, int w, int h);
     void draw_car(const Car& c, const std::string& model, const CarLook& look, int key);
     void hud_single();
@@ -80,6 +83,8 @@ private:
     Hud hud_;
     Hud sky_;                                   // the sky, drawn behind each view
     std::unordered_map<int, Mesh> car_meshes_;  // built once per model and look
+    Minimap minimap_;
+    std::vector<StreetTracker> streets_;        // the street each player is on
     Input input_;
     Sound sound_;
     std::unique_ptr<Town> town_;

@@ -75,7 +75,7 @@ Mat4 box_model(double x, double y, double z, double heading, double len, double 
 
 App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junctions, const Options& opt)
     : window_(window), world_(world), graph_(graph), junctions_(junctions), opt_(opt), renderer_(world),
-      target_(kW, kH), hud_(kW, kH), sky_(kW, kH) {
+      target_(kW, kH), hud_(kW, kH), sky_(kW, kH), minimap_(world) {
     sky_.set_alpha(0.0f);
     start_x_ = opt.at ? opt.at_x : world.map().spawn_x;
     start_y_ = opt.at ? opt.at_y : world.map().spawn_y;
@@ -116,6 +116,7 @@ void App::start(int players, int battle) {
 void App::spawn_players() {
     cars_.clear();
     cams_.clear();
+    streets_.assign(players_, StreetTracker{});
     const double h = start_heading_, rx = -std::sin(h), ry = std::cos(h);
     for (int i = 0; i < players_; ++i) {
         double side = 0, back = 0;
@@ -214,7 +215,10 @@ void App::step(double dt) {
         for (const char* name : battle_->sounds) sound_.play(name);
         battle_->sounds.clear();
     }
-    for (int i = 0; i < players_; ++i) cams_[i].update(*cars_[i], world_, dt);
+    for (int i = 0; i < players_; ++i) {
+        cams_[i].update(*cars_[i], world_, dt);
+        streets_[i].update(world_, *cars_[i], dt);
+    }
 }
 
 int App::run() {
@@ -357,7 +361,58 @@ void App::draw_sky(const Camera& cam, int w, int h) {
         sky_.rect(cx - cw / 2 + 2, cy - ch / 2, cw - 6, ch - 1, palette::kCloud);
         sky_.rect(cx - cw / 5, cy - ch / 2 - 4, cw / 2, 5, palette::kCloud);
     }
+    // two ridges of distant hills (game/render3d.py _draw_hills): fixed to compass direction, so they slide as you
+    // steer; heights in pixels of the 180-line picture, scaled to this view
+    static const std::uint8_t kHillFar[3] = {126, 176, 226}, kHillNear[3] = {66, 154, 126};
+    const double scale = h / 180.0;
+    const double ridges[2][6] = {{7, 13, 2.0, 5.0, 0.7, 0}, {2, 9, 3.0, 8.0, 2.1, 1}};
+    for (const auto& rg : ridges) {
+        const std::uint8_t* col = rg[5] == 0 ? kHillFar : kHillNear;
+        float prev_x = 0, prev_y = 0;
+        for (int sx = 0; sx <= w + 8; sx += 8) {
+            const double ang = yaw + std::atan((sx - w / 2.0) / f);
+            const double hgt = rg[0] + rg[1] * (0.5 + 0.5 * std::sin(ang * rg[2] + rg[4])) + 0.4 * rg[1] * std::sin(ang * rg[3] + rg[4] * 2);
+            const float x = static_cast<float>(sx), y = static_cast<float>(horizon - std::max(0.0, hgt) * scale);
+            if (sx > 0) {
+                const float base = static_cast<float>(horizon + 2);
+                sky_.tri(prev_x, prev_y, x, y, x, base, col);
+                sky_.tri(prev_x, prev_y, x, base, prev_x, base, col);
+            }
+            prev_x = x;
+            prev_y = y;
+        }
+    }
     sky_.end();
+}
+
+// The street style's see-through hard shadows (game/render3d.py _draw_shadow_layer): the buildings' and trees' are
+// built into the map's chunks (they never move); here, a footprint under each car. One see-through colour.
+void App::draw_shadows(const Camera& cam) {
+    static const std::uint8_t kShadow[4] = {24, 22, 72, 120};
+    const double sdx = 0.45, sdy = -0.4;  // game/render3d.py SHADOW_DIR: metres of shadow per metre of height
+    const MapData& m = world_.map();
+    const TerrainGrid& T = m.terrain;
+    (void)cam;
+    std::vector<float> tris;
+    auto fan = [&](const std::vector<std::pair<double, double>>& poly) {  // a convex polygon on the ground
+        if (poly.size() < 3) return;
+        auto z = [&](double x, double y) { return T.mesh_height(static_cast<float>(x), static_cast<float>(y)) + 0.2f; };
+        for (std::size_t k = 1; k + 1 < poly.size(); ++k)
+            for (std::size_t q : {std::size_t(0), k, k + 1})
+                tris.insert(tris.end(), {static_cast<float>(poly[q].first), static_cast<float>(poly[q].second),
+                                         z(poly[q].first, poly[q].second)});
+    };
+    auto car_shadow = [&](const Car& c) {
+        std::vector<std::pair<double, double>> fp;
+        for (const auto& ab : {std::pair<double, double>{2.4, -1.15}, {2.4, 1.15}, {-2.4, 1.15}, {-2.4, -1.15}})
+            fp.push_back({c.x + c.fx() * ab.first + c.rx() * ab.second + sdx * 0.6,
+                          c.y + c.fy() * ab.first + c.ry() * ab.second + sdy * 0.6});
+        fan(fp);
+    };
+    for (const auto& c : cars_) car_shadow(*c);
+    if (town_)
+        for (const auto& c : town_->cars()) car_shadow(*c);
+    renderer_.draw_shadows(tris, kShadow);
 }
 
 // The train's blocks (game/render3d.py _draw_train_unit): a dark underframe, then a red locomotive with a yellow
@@ -385,11 +440,13 @@ void App::draw_view(int i, int x, int y, int w, int h) {
     glEnable(GL_SCISSOR_TEST);
     glScissor(x, kH - y - h, w, h);
     glClearColor(palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     const Camera cam = cams_[i].camera(kFovy);
     draw_sky(cam, w, h);
     const FrameStats st = renderer_.draw(cam, static_cast<float>(w) / h);
     tris_total_ += st.triangles;
+    draw_shadows(cam);
     draw_cars();
     draw_train();
     if (battle_) draw_battle_things(i);
@@ -474,10 +531,46 @@ void App::hud_single() {
     const Car& car = *cars_[0];
     Town& town = *town_;
     MissionManager& jobs = *jobs_;
-    const std::string kmh = std::to_string(static_cast<int>(std::lround(car.speed() * 3.6))) + " KM/H";
+    const int kmh_v = static_cast<int>(std::lround(car.speed() * 3.6));
+    const std::string kmh = std::to_string(kmh_v) + " KM/H";
     hud_.text(6, kH - 14, kmh, palette::kHudText, 2);
-    for (int k = 0; k < 4; ++k)
-        hud_.rect(kW - 52 + k * 12, 6, 9, 9, k < town.stars() ? palette::kHudStar : palette::kHudStarOff);
+    for (int k = 0; k < 4; ++k)  // wanted stars, left of the minimap
+        hud_.rect(kW - Minimap::kSize - 56 + k * 12, 6, 9, 9, k < town.stars() ? palette::kHudStar : palette::kHudStarOff);
+    // the minimap, top right, with traffic, police and the job's markers on it, and its rotating N
+    std::vector<MapBlip> blips;
+    for (const auto& c : town.cars()) blips.push_back({c->x, c->y, {0, 0, 0}, c->police ? 1 : 0});
+    for (const Marker& mk : jobs.markers()) blips.push_back({mk.x, mk.y, {mk.colour.r, mk.colour.g, mk.colour.b}, mk.hub ? 3 : 2});
+    const int mx = kW - Minimap::kSize - 4, my = 4, mc = Minimap::kSize / 2;
+    minimap_.draw(car, blips, town.time(), mx, my, kW, kH, target_.final_fbo());
+    {
+        // north (map -y) on the heading-up map: x = north . right, y = -(north . forward)
+        const double up_x = -car.ry(), up_y = car.fy();
+        const int px = static_cast<int>(mx + mc + up_x * (mc + 1)), py = static_cast<int>(my + mc + up_y * (mc + 1));
+        static const std::uint8_t kNorth[3] = {214, 52, 60};
+        hud_.rect(px - 4, py - 4, 9, 9, kInk);
+        hud_.rect(px - 3, py - 3, 7, 7, kNorth);
+        hud_.text(px - 1, py - 2, "N", palette::kHudText);
+    }
+    // the street sign (green, bottom middle) and the speed limit next to the speed
+    const StreetTracker& st = streets_[0];
+    if (!st.name.empty()) {
+        const int w = hud_.text_width(st.name) + 12, sx = (kW - w) / 2, sy = kH - 16;
+        static const std::uint8_t kSignGreen[3] = {24, 118, 74};
+        hud_.rect(sx - 1, sy - 1, w + 2, 15, kInk);          // ink edge, green sign, a thin white frame inside
+        hud_.rect(sx, sy, w, 13, kSignGreen);
+        hud_.rect(sx + 1, sy + 1, w - 2, 11, palette::kHudText);
+        hud_.rect(sx + 2, sy + 2, w - 4, 9, kSignGreen);
+        hud_.text(sx + 6, sy + 4, st.name, palette::kHudText, 1, false);
+    }
+    if (st.limit > 0) {
+        const bool over = car.speed() * 3.6 > st.limit * 1.1 && town.state() == TownState::Playing;
+        const int lx = 6 + hud_.text_width(kmh, 2) + 6, ly = kH - 26;
+        hud_.rect(lx - 1, ly - 1, 22, 24, kInk);
+        hud_.rect(lx, ly, 20, 22, palette::kHudText);
+        hud_.text(lx + 4, ly + 2, "MAX", kInk, 1, false);
+        const std::string num = std::to_string(st.limit);
+        hud_.text(lx + (20 - hud_.text_width(num, 2)) / 2, ly + 10, num, over ? palette::kHudRed : kInk, 2, false);
+    }
     hud_.text(kW - 82, kH - 13, "DMG", palette::kHudText);
     hud_.rect(kW - 66, kH - 14, 60, 7, palette::kHudBar);
     hud_.rect(kW - 65, kH - 13, static_cast<int>(58 * town.damage() / 100.0), 5, palette::kHudDamage);
@@ -606,6 +699,13 @@ void App::hud_battle(int i, int x, int y, int w, int h) {
 void App::hud_split(int i, int x, int y, int w, int h) {
     const Car& car = *cars_[i];
     hud_.text(x + 5, y + 4, "P" + std::to_string(i + 1), kTags[i], 2);
+    if (!streets_[i].name.empty()) {  // the street, on a green sign at the top right
+        static const std::uint8_t kSignGreen[3] = {24, 118, 74};
+        const int sw = hud_.text_width(streets_[i].name) + 8, sx = x + w - sw - 5;
+        hud_.rect(sx - 1, y + 3, sw + 2, 11, kInk);
+        hud_.rect(sx, y + 4, sw, 9, kSignGreen);
+        hud_.text(sx + 4, y + 6, streets_[i].name, palette::kHudText);
+    }
     const std::string kmh = std::to_string(static_cast<int>(car.speed() * 3.6)) + " KM/H";
     hud_.text(x + 5, y + h - 10, kmh, kOrange);
     if (car.drift || car.boost_t > 0.0)
