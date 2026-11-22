@@ -96,6 +96,13 @@ struct Prop {
     float x = 0, y = 0, h = 0, r = 0, cr = 0, heading = 0, x2 = 0, y2 = 0;
 };
 
+// A hand-placed parked car (PARK; data/map_edits.json "cars"): drawn as a cartoon car, solid through PROP car_blocks.
+struct ParkedCar {
+    float x = 0, y = 0, heading = 0;  // map radians
+    std::string model = "sedan";
+    Rgb body, roof;
+};
+
 // The road graph as baked (game/roadgraph.py RoadGraph): see sim/roadgraph.h for the queries.
 struct GraphNode {
     double x = 0, y = 0;
@@ -156,6 +163,7 @@ struct MapData {
     std::vector<HubSpot> hubs;
     std::vector<TourSpot> tour_spots;
     std::vector<CivicAddress> addresses;
+    std::vector<ParkedCar> parked;
     std::vector<long long> downtown_cells;     // 40 m cells (cx << 32 ^ cy) where sidewalks are brick, sorted
     bool downtown(float x, float y) const;
     std::vector<TourSpot> sprint_targets;  // VS race finishes (game/battle.py sprint_targets)

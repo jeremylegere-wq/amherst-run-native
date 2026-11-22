@@ -6,6 +6,7 @@
 #include <string>
 
 #include "render/building_detail.h"
+#include "render/car_mesh.h"
 #include "render/landmarks.h"
 #include "render/palette.h"
 #include "render/shader.h"
@@ -114,26 +115,31 @@ void prop_box(MeshBuilder& m, float x, float y, float z0, float hx, float hy, fl
     m.quad(q[3], q[0], q[4], q[7], rgb);
 }
 
-// A tree: a trunk and a two-tone canopy (lit top, shaded underside), eight-sided, round enough at 320x180.
+// A tree: a trunk and a rounded two-tone canopy (lit above, shaded underneath): eight sides, two rings, each tree
+// turned a little differently so a row of them does not line up. 32 triangles: round enough at 320x180.
 void tree(MeshBuilder& m, float x, float y, float g, float h, float r, int c) {
     prop_box(m, x, y, g, 0.12f, 0.12f, h * 0.62f, 0.0f, palette::kTrunk);
     const float zc = g + h - r * 0.8f, vz = r * 0.9f;
     const std::uint8_t* lit = palette::kTreeLit[c % 3];
     const std::uint8_t* shade = palette::kTreeShade[c % 3];
-    Vec3 ring[8];
+    const float turn = std::fmod(std::fabs(x * 0.37f + y * 0.61f), 0.785f);
+    Vec3 lo[8], hi[8];
     for (int k = 0; k < 8; ++k) {
-        const float a = k * 0.7853982f;
-        ring[k] = {x + r * std::cos(a), y + r * std::sin(a), zc};
+        const float a = turn + k * 0.7853982f, a2 = a + 0.3927f;  // the upper ring sits half a side round
+        lo[k] = {x + r * std::cos(a), y + r * std::sin(a), zc - vz * 0.2f};
+        hi[k] = {x + r * 0.78f * std::cos(a2), y + r * 0.78f * std::sin(a2), zc + vz * 0.45f};
     }
-    const Vec3 top{x, y, zc + vz}, bottom{x, y, zc - vz * 0.75f};
+    const Vec3 top{x, y, zc + vz}, bottom{x, y, zc - vz * 0.7f};
+    auto tri = [&](Vec3 a, Vec3 b, Vec3 c2, const std::uint8_t* col) {
+        const Vec3 n = normalize(cross(b - a, c2 - a));
+        m.tri(m.add(a, n, col), m.add(b, n, col), m.add(c2, n, col));
+    };
     for (int k = 0; k < 8; ++k) {
-        const Vec3 a = ring[k], b = ring[(k + 1) % 8];
-        Vec3 n = normalize(cross(b - a, top - a));
-        const auto i0 = m.add(a, n, lit), i1 = m.add(b, n, lit), i2 = m.add(top, n, lit);
-        m.tri(i0, i1, i2);
-        n = normalize(cross(bottom - a, b - a));
-        const auto j0 = m.add(a, n, shade), j1 = m.add(bottom, n, shade), j2 = m.add(b, n, shade);
-        m.tri(j0, j1, j2);
+        const int j = (k + 1) % 8;
+        tri(hi[k], hi[j], top, lit);          // the crown
+        tri(lo[k], lo[j], hi[k], lit);        // the band, zig-zag between the two rings
+        tri(lo[j], hi[j], hi[k], lit);
+        tri(lo[k], bottom, lo[j], shade);     // the underside
     }
 }
 
@@ -286,6 +292,7 @@ void MapRenderer::bucket() {
         const Prop& p = m.props[i];
         add_box(p.x, p.y, p.x, p.y, {4, i, 0});
     }
+    for (int i = 0; i < static_cast<int>(m.parked.size()); ++i) add_box(m.parked[i].x, m.parked[i].y, m.parked[i].x, m.parked[i].y, {6, i, 0});
     for (int w = 0; w < static_cast<int>(m.rails.size()); ++w)
         for (int s = 0; s + 1 < static_cast<int>(m.rails[w].size()); ++s) {
             const Point2 a = m.rails[w][s], b = m.rails[w][s + 1];
@@ -597,6 +604,28 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                     prop_box(s, p.x, p.y, g + std::max(2.2f, p.h) - 0.3f, 0.3f, 0.06f, 0.6f, p.heading, head);
                 }
                 else add_landmark(s, kind, p, g);  // the lighthouse, cenotaph, dam and horse (car_block: invisible)
+            } else if (it.kind == 6) {  // a parked car: its cartoon mesh, turned and set down in the chunk
+                const ParkedCar& pc = m.parked[it.index];
+                if (!inside(pc.x, pc.y)) continue;
+                CarLook look{};  // render3d parked_cars: dark lower body, grey-blue glass, red tail lights
+                const std::uint8_t body[3] = {pc.body.r, pc.body.g, pc.body.b}, roof[3] = {pc.roof.r, pc.roof.g, pc.roof.b};
+                std::copy(body, body + 3, look.body);
+                std::copy(roof, roof + 3, look.roof);
+                look.glass[0] = 52; look.glass[1] = 62; look.glass[2] = 84;
+                look.tail[0] = 200; look.tail[1] = 40; look.tail[2] = 40;
+                const MeshBuilder car = build_car(car_shape(pc.model), look);
+                const float c = std::cos(pc.heading), sn = std::sin(pc.heading), g = world_.ground(pc.x, pc.y);
+                const std::uint32_t first = static_cast<std::uint32_t>(s.verts.size());
+                for (Vertex v : car.verts) {
+                    const float x = v.x, y = v.y, nx = v.nx, ny = v.ny;
+                    v.x = pc.x + x * c - y * sn;
+                    v.y = pc.y + x * sn + y * c;
+                    v.z += g;
+                    v.nx = nx * c - ny * sn;
+                    v.ny = nx * sn + ny * c;
+                    s.verts.push_back(v);
+                }
+                for (std::uint32_t k : car.idx) s.idx.push_back(first + k);
             } else {  // an area triangle (land use, park, lot, water), split to follow the ground
                 const Poly& P = m.polys[it.index];
                 const Tri t = P.tris[it.sub];

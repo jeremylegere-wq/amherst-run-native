@@ -274,6 +274,13 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             if (d.front >= walls || d.wrap >= walls) return false;
             for (auto k : d.shops) if (k >= walls) return false;
         }
+    } else if (tag == "PARK") {
+        m.parked.resize(r.count(22));
+        for (auto& c : m.parked) {
+            c.x = r.get<float>(); c.y = r.get<float>(); c.heading = r.get<float>();
+            c.model = r.str();
+            c.body = r.rgb(); c.roof = r.rgb();
+        }
     } else if (tag == "ADDR") {
         m.addresses.resize(r.count(16));
         for (auto& a : m.addresses) {
