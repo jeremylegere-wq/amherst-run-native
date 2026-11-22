@@ -1,0 +1,47 @@
+// The game as an Android app: SDL2 (built from its source, which CI downloads into SDL2/ beside this file's folder),
+// the game's C++ as libmain.so, SDL's Java activity, and the baked map in the APK's assets.
+plugins {
+    id "com.android.application"
+}
+
+def sdlDir = file("../SDL2").absolutePath
+
+android {
+    namespace "ca.amherstrun.game"
+    compileSdk 34
+    ndkVersion project.findProperty("ndkVersion") ?: "27.2.12479018"
+
+    defaultConfig {
+        applicationId "ca.amherstrun.game"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+        externalNativeBuild {
+            cmake {
+                arguments "-DSDL_DIR=${sdlDir}", "-DANDROID_STL=c++_shared"
+                abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "jni/CMakeLists.txt"
+            version project.findProperty("cmakeVersion") ?: "3.22.1"
+        }
+    }
+    sourceSets {
+        main {
+            java.srcDirs = ["src/main/java", "${sdlDir}/android-project/app/src/main/java"]
+            assets.srcDirs = ["assets"]
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    androidResources {
+        noCompress "amr"   // the map is read straight out of the APK
+    }
+}

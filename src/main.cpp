@@ -39,14 +39,15 @@ std::string default_map() {
         base = p;
         SDL_free(p);
     }
-    for (const char* rel : {"assets/amherst.amr", "../assets/amherst.amr"}) {
+    // beside the game, one folder up (a build folder), or in the app's own assets (Android: the APK)
+    for (const char* rel : {"assets/amherst.amr", "../assets/amherst.amr", "amherst.amr"}) {
         std::string path = base + rel;
         if (SDL_RWops* f = SDL_RWFromFile(path.c_str(), "rb")) {
             SDL_RWclose(f);
             return path;
         }
     }
-    return "assets/amherst.amr";
+    return "amherst.amr";
 }
 
 bool parse(int argc, char** argv, amr::Options& a, std::string& map) {

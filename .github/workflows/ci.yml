@@ -38,3 +38,84 @@ jobs:
         with:
           name: frame
           path: frame.bmp
+
+  android:
+    name: Android APK (SDL2 from source, NDK, Gradle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SDL_VERSION: "2.32.10"
+      SDL_SHA256: "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165"
+      GRADLE_VERSION: "8.7"
+      GRADLE_SHA256: "544c35d6bd849ae8a5ed0bcea39ba677dc40f49df7d1835561582da2009b961d"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The baked map, into the APK's assets
+        run: |
+          python3 tools/fetch_map.py
+          mkdir -p platform/android/app/assets
+          cp assets/amherst.amr platform/android/app/assets/
+      - name: SDL2 source (checked against its SHA-256)
+        run: |
+          curl -sSL -o sdl.tar.gz "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.tar.gz"
+          echo "${SDL_SHA256}  sdl.tar.gz" | sha256sum -c -
+          tar xzf sdl.tar.gz
+          mv "SDL2-${SDL_VERSION}" platform/android/SDL2
+      - name: Gradle (checked against its SHA-256)
+        run: |
+          curl -sSL -o gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          echo "${GRADLE_SHA256}  gradle.zip" | sha256sum -c -
+          unzip -q gradle.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+      - name: What the runner has (Java, Android SDK, NDK, CMake)
+        run: |
+          java -version 2>&1 | head -1
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/ndk" || true
+          ls "$ANDROID_HOME/cmake" || true
+      - name: Build the APK
+        working-directory: platform/android
+        run: |
+          NDK=$(basename "$ANDROID_NDK_LATEST_HOME")
+          CMAKE=$(ls "$ANDROID_HOME/cmake" | sort -V | tail -1)
+          echo "NDK $NDK, CMake $CMAKE"
+          gradle --no-daemon assembleDebug -PndkVersion="$NDK" -PcmakeVersion="$CMAKE"
+      - name: Keep the APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: amherst-run-android-debug
+          path: platform/android/app/build/outputs/apk/debug/*.apk
+
+  windows-uwp-probe:
+    name: Xbox (UWP) toolchain probe on the Windows runner
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      SDL_VERSION: "2.32.10"
+      SDL_SHA256: "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165"
+    steps:
+      - name: Visual Studio, its UWP workload, and the Windows SDKs on this runner
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          & $vswhere -latest -products * -format text | Select-String "displayName|installationVersion|installationPath"
+          $uwp = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Workload.Universal -property installationPath
+          if ($uwp) { "UWP workload: installed" } else { "UWP workload: NOT installed" }
+          $cpp = & $vswhere -latest -products * -requires Microsoft.VisualStudio.ComponentGroup.UWP.VC -property installationPath
+          if ($cpp) { "UWP C++ tools: installed" } else { "UWP C++ tools: NOT installed" }
+          Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include" | Select-Object -ExpandProperty Name
+      - name: SDL2 source (checked against its SHA-256)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL_VERSION/SDL2-$env:SDL_VERSION.tar.gz" -OutFile sdl.tar.gz
+          $hash = (Get-FileHash sdl.tar.gz -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:SDL_SHA256) { throw "SDL2 checksum $hash does not match" }
+          tar xzf sdl.tar.gz
+      - name: Build SDL2 for UWP (x64), the first piece of the Xbox build
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          & $msbuild "SDL2-$env:SDL_VERSION\VisualC-WinRT\SDL-UWP.vcxproj" /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "SDL2 UWP build failed ($LASTEXITCODE)" }
+          Get-ChildItem -Recurse "SDL2-$env:SDL_VERSION\VisualC-WinRT" -Include *.dll,*.lib | Select-Object FullName, Length
