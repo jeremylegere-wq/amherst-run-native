@@ -196,6 +196,23 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             e.name = r.get<std::uint32_t>();
             if (e.a >= nn || e.b >= nn) return false;
         }
+    } else if (tag == "JNCT") {
+        const auto nn = r.count(17);
+        m.jn_is.resize(nn);
+        m.jn_box.resize(nn);
+        m.jn_stop_at.resize(nn);
+        for (std::uint32_t i = 0; i < nn; ++i) {
+            m.jn_is[i] = r.get<std::uint8_t>();
+            m.jn_box[i] = r.get<double>();
+            m.jn_stop_at[i] = r.get<double>();
+        }
+        const auto ne = r.count(2);
+        m.jn_control.resize(ne);
+        m.jn_phase.resize(ne);
+        for (std::uint32_t i = 0; i < ne; ++i) {
+            m.jn_control[i] = r.get<std::uint8_t>();
+            m.jn_phase[i] = r.get<std::uint8_t>();
+        }
     } else {
         return true;  // a newer chunk this version does not know: skip it
     }

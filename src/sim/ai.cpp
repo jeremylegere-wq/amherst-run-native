@@ -1,5 +1,7 @@
 #include "sim/ai.h"
 
+#include "sim/junctions.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -51,7 +53,7 @@ double obstacle_limit(const Car& car, const std::vector<const Car*>& others, dou
 }
 
 void drive_traffic(AICar& car, const RoadGraph& graph, const std::vector<const Car*>& others,
-                   const std::function<int(int)>& next_edge, double dt) {
+                   const std::function<int(int)>& next_edge, double dt, Junctions* junctions, double now) {
     if (car.edge < 0) {
         car.dead = true;
         return;
@@ -101,7 +103,7 @@ void drive_traffic(AICar& car, const RoadGraph& graph, const std::vector<const C
     if (std::fabs(err) > 1.0) v_t = std::min(v_t, 5.0);
     const double v_obs = obstacle_limit(car, others);
     v_t = std::min(v_t, v_obs);
-    const double v_jn = 1e9;  // junction rules (game/junctions.py) come later
+    const double v_jn = junctions ? junctions->limit(car, car.edge, s, others, now, dt) : 1e9;
     v_t = std::min(v_t, v_jn);
 
     // smooth steering: towards the target at a limited rate, faster at speed

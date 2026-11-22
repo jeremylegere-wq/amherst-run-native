@@ -25,6 +25,7 @@
 #include "render/target.h"
 #include "sim/car.h"
 #include "sim/collision.h"
+#include "sim/junctions.h"
 #include "sim/roadgraph.h"
 #include "sim/town.h"
 #include "world/map_file.h"
@@ -145,7 +146,8 @@ int main(int argc, char** argv) {
     const float sx = args.at ? args.at_x : world.map().spawn_x, sy = args.at ? args.at_y : world.map().spawn_y;
     amr::Car car(sx, sy, args.has_heading ? args.heading : world.map().spawn_heading, amr::player_model(0));
     car.z = world.height_at(sx, sy, world.ground(sx, sy));
-    amr::Town town(world, graph, 1, args.traffic);
+    amr::Junctions junctions(world.map(), graph);
+    amr::Town town(world, graph, &junctions, 1, args.traffic);
     amr::ChaseCamera chase(car);
     chase.update(car, world, 0.0, true);
     renderer.warm(sx, sy);

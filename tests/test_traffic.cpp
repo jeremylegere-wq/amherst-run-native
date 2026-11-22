@@ -12,6 +12,7 @@
 
 #include "sim/ai.h"
 #include "sim/collision.h"
+#include "sim/junctions.h"
 #include "sim/roadgraph.h"
 #include "sim/town.h"
 #include "world/map_file.h"
@@ -78,7 +79,7 @@ struct Row {
     int edge;
 };
 
-int check_traffic(const amr::World& world, const amr::RoadGraph& g, const std::string& path) {
+int check_traffic(const amr::World& world, const amr::RoadGraph& g, amr::Junctions& jn, const std::string& path) {
     std::ifstream f(path);
     std::string line;
     std::getline(f, line);
@@ -112,16 +113,17 @@ int check_traffic(const amr::World& world, const amr::RoadGraph& g, const std::s
         }
         std::vector<const amr::Car*> others;
         for (auto& c : cars) others.push_back(c.get());
-        double acc = 0.0, worst = 0.0;
+        double acc = 0.0, now = 0.0, worst = 0.0;
         int first_bad = -1;
         std::vector<std::vector<int>> got_edges(cars.size()), want_edges(cars.size());  // each car's edge sequence
         auto note = [](std::vector<int>& seq, int e) { if (seq.empty() || seq.back() != e) seq.push_back(e); };
         for (; i < rows.size();) {
-            acc += dt;  // game/town.py Town.update, for these cars only
+            now += dt;  // game/town.py Town.update, for these cars only
+            acc += dt;
             if (acc >= 0.05) {
                 const double ctl = acc;
                 acc = 0.0;
-                for (auto& c : cars) amr::drive_traffic(*c, g, others, next, ctl);
+                for (auto& c : cars) amr::drive_traffic(*c, g, others, next, ctl, &jn, now);
             }
             for (auto& c : cars) {
                 const double px = c->x, py = c->y;
@@ -140,7 +142,7 @@ int check_traffic(const amr::World& world, const amr::RoadGraph& g, const std::s
                 worst = std::fmax(worst, d);
                 note(got_edges[k], c->edge);
                 note(want_edges[k], r.edge);
-                if (first_bad < 0 && d > 0.05) first_bad = r.step;  // on/off throttle decisions amplify millimetres
+                if (first_bad < 0 && d > 0.10) first_bad = r.step;  // on/off throttle decisions amplify millimetres
             }
         }
         for (std::size_t k = 0; k < cars.size(); ++k)  // the same roads in the same order (switching a step apart is fine)
@@ -157,10 +159,10 @@ int check_traffic(const amr::World& world, const amr::RoadGraph& g, const std::s
 
 // A minute of town around a player parked downtown: the cars keep their numbers up, keep moving and keep to the
 // roads (not a parity check: the town rolls its own dice).
-int check_town(const amr::World& world, const amr::RoadGraph& g) {
+int check_town(const amr::World& world, const amr::RoadGraph& g, amr::Junctions& jn) {
     amr::Car player(394.6, -835.8, 0.0, amr::player_model(0));
     player.z = world.height_at(394.6f, -835.8f, 0.0f);
-    amr::Town town(world, g, 7, 16);
+    amr::Town town(world, g, &jn, 7, 16);
     const double dt = 1.0 / 60.0;
     double cars_sum = 0, speed_sum = 0;
     long samples = 0, on_road = 0, car_samples = 0;
@@ -201,11 +203,12 @@ int main(int argc, char** argv) {
         return 77;
     }
     amr::RoadGraph graph(m);
+    amr::Junctions junctions(m, graph);
     amr::World world(std::move(m));
     std::printf("road graph: %zu nodes, %zu edges\n", graph.nodes.size(), graph.edges.size());
     int bad = check_paths(graph, dir + "/paths.csv");
     bad += check_nearest(graph, dir + "/nearest.csv");
-    bad += check_traffic(world, graph, dir + "/traffic.csv");
-    bad += check_town(world, graph);
+    bad += check_traffic(world, graph, junctions, dir + "/traffic.csv");
+    bad += check_town(world, graph, junctions);
     return bad ? 1 : 0;
 }

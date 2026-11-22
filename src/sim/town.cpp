@@ -17,8 +17,8 @@ constexpr double kSpawnMin = 150.0, kSpawnMax = 230.0;
 double type_weight(int type) { return type == kMain ? 3.0 : (type == kSide ? 2.0 : 0.3); }  // TRAFFIC_W
 }  // namespace
 
-Town::Town(const World& world, const RoadGraph& graph, unsigned seed, int traffic)
-    : world_(world), graph_(graph), rng_(seed), target_(traffic) {}
+Town::Town(const World& world, const RoadGraph& graph, Junctions* junctions, unsigned seed, int traffic)
+    : world_(world), graph_(graph), junctions_(junctions), rng_(seed), target_(traffic) {}
 
 int Town::local_target(const Car& player) {
     if (target_ <= 0) return 0;
@@ -90,6 +90,7 @@ void Town::manage(const Car& player, bool fill) {
 }
 
 void Town::update(double dt, Car& player) {
+    time_ += dt;
     if (!filled_) {
         manage(player, true);
         filled_ = true;
@@ -107,7 +108,7 @@ void Town::update(double dt, Car& player) {
         for (const auto& c : cars_) others.push_back(c.get());
         others.push_back(&player);
         auto next = [&](int eid) { return graph_.choose_next(eid, rng_); };
-        for (auto& c : cars_) drive_traffic(*c, graph_, others, next, step);
+        for (auto& c : cars_) drive_traffic(*c, graph_, others, next, step, junctions_, time_);
     }
     for (auto& c : cars_) {
         const double px = c->x, py = c->y;

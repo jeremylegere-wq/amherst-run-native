@@ -105,6 +105,11 @@ struct MapData {
     std::vector<Prop> props;
     std::vector<GraphNode> graph_nodes;
     std::vector<GraphEdge> graph_edges;
+    // junction rules (game/junctions.py, classified at bake time): per node, per edge into a junction
+    std::vector<std::uint8_t> jn_is;          // node is a junction (3+ roads meet)
+    std::vector<double> jn_box, jn_stop_at;   // node: junction box radius; distance from the node to the stop point
+    std::vector<std::uint8_t> jn_control;     // edge: 0 priority 1 signal 2 stop 3 yield 4 all-way
+    std::vector<std::uint8_t> jn_phase;       // edge: signal phase, 0 east-west 1 north-south
     int prop_kind(const std::string& name) const;  // index of a kind, -1 if the map has none of it
 };
 
