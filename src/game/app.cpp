@@ -48,7 +48,9 @@ void rainbow(double h, std::uint8_t out[3]) {
     out[0] = c[i][0]; out[1] = c[i][1]; out[2] = c[i][2];
 }
 constexpr int kMenuCount = sizeof(kMenu) / sizeof(kMenu[0]);
-const char* kPause[] = {"RESUME", "MAIN MENU", "QUIT"};
+const char* kPause[] = {"RESUME", "QUALITY", "MAIN MENU", "QUIT"};
+constexpr int kPauseCount = sizeof(kPause) / sizeof(kPause[0]);
+constexpr int kPauseW = 140, kPauseH = 99;  // the pause box
 
 // Screen rectangles (x, y, w, h) of the players in the 320x180 picture (game/twoplayer.py layout).
 void layout(int n, int i, int& x, int& y, int& w, int& h) {
@@ -83,6 +85,8 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
     start_heading_ = opt.has_heading ? opt.heading : world.map().spawn_heading;
     const bool menu = opt.menu || (opt.players == 0 && opt.battle == 0 && opt.frames < 0);
     renderer_.set_weather(opt_.weather);
+    renderer_.set_low_quality(opt_.low_quality);
+    if (opt_.touch) input_.touch().set_mouse(true);
     renderer_.warm(static_cast<float>(start_x_), static_cast<float>(start_y_));
     if (menu) mode_ = Mode::Menu;
     else if (opt.battle) start(2, opt.battle);
@@ -162,12 +166,13 @@ void App::menu_input(const Actions& a) {
 }
 
 void App::pause_input(const Actions& a) {
-    if (a.up) pause_index_ = (pause_index_ + 2) % 3;
-    if (a.down) pause_index_ = (pause_index_ + 1) % 3;
+    if (a.up) pause_index_ = (pause_index_ + kPauseCount - 1) % kPauseCount;
+    if (a.down) pause_index_ = (pause_index_ + 1) % kPauseCount;
     if (a.back) { paused_ = false; return; }
     if (a.confirm) {
         if (pause_index_ == 0) paused_ = false;
-        else if (pause_index_ == 1) { paused_ = false; mode_ = Mode::Menu; }
+        else if (pause_index_ == 1) renderer_.set_low_quality(!renderer_.low_quality());
+        else if (pause_index_ == 2) { paused_ = false; mode_ = Mode::Menu; }
         else quit_ = true;
     }
 }
@@ -230,9 +235,36 @@ int App::run() {
     int frame = 0;
     while (!quit_) {
         SDL_Event e;
+        {
+            int ww = 0, wh = 0;
+            SDL_GL_GetDrawableSize(window_, &ww, &wh);
+            input_.set_window_size(ww, wh);
+        }
         while (SDL_PollEvent(&e)) input_.handle(e);
-        const Actions a = input_.actions();
+        Actions a = input_.actions();
         if (a.quit) break;
+        if (a.background) {  // a phone put the game away: stop the sound, and come back to the pause screen
+            sound_.pause(true);
+            if (mode_ != Mode::Menu && !paused_) { paused_ = true; pause_index_ = 0; }
+        }
+        if (a.foreground) sound_.pause(false);
+        for (const auto& t : input_.taps()) {  // touch: a tap on a menu or pause item picks it
+            if (mode_ == Mode::Menu) {
+                for (int i = 0; i < kMenuCount; ++i)
+                    if (t.first >= 90 && t.first < 230 && t.second >= 46 + i * 14 && t.second < 58 + i * 14) {
+                        menu_index_ = i;
+                        a.confirm = true;
+                    }
+            } else if (paused_) {
+                const int bx = (kW - kPauseW) / 2, by = (kH - kPauseH) / 2;
+                for (int i = 0; i < kPauseCount; ++i)
+                    if (t.first >= bx + 15 && t.first < bx + kPauseW - 15 && t.second >= by + 24 + i * 17 &&
+                        t.second < by + 38 + i * 17) {
+                        pause_index_ = i;
+                        a.confirm = true;
+                    }
+            }
+        }
         if (a.weather) {  // F4: the next weather; the chunks around the first player are made again at once
             renderer_.set_weather((weather_index(renderer_.weather().name) + 1) % kWeatherCount);
             if (!cars_.empty()) renderer_.warm(static_cast<float>(cars_[0]->x), static_cast<float>(cars_[0]->y));
@@ -485,14 +517,14 @@ void App::draw(int frame) {
     const float ink[3] = {palette::kInk[0] / 255.0f, palette::kInk[1] / 255.0f, palette::kInk[2] / 255.0f};
     if (mode_ == Mode::Menu) {
         draw_menu();
-        target_.ink(0.5f, MapRenderer::kDrawDist + 40.0f, 140.0f, ink);
+        target_.ink(0.5f, renderer_.far_plane(), 140.0f, ink);
     } else {
         for (int i = 0; i < players_; ++i) {
             int x, y, w, h;
             view_rect(i, x, y, w, h);
             draw_view(i, x, y, w, h);
         }
-        target_.ink(0.5f, MapRenderer::kDrawDist + 40.0f, 140.0f, ink);  // outlines, then the HUD over them
+        target_.ink(0.5f, renderer_.far_plane(), 140.0f, ink);  // outlines, then the HUD over them
         glViewport(0, 0, kW, kH);
         if (renderer_.weather().snowfall) {  // falling snow over each view (game/render3d.py _draw_snowfall)
             const double t = frame / 30.0;
@@ -537,6 +569,7 @@ void App::draw(int frame) {
                 }
             }
         }
+        if (mode_ == Mode::Single && !paused_ && input_.touch().shown()) draw_touch();
         if (paused_) draw_pause();
     }
     hud_.end();
@@ -560,7 +593,11 @@ void App::hud_single() {
     MissionManager& jobs = *jobs_;
     const int kmh_v = static_cast<int>(std::lround(car.speed() * 3.6));
     const std::string kmh = std::to_string(kmh_v) + " KM/H";
-    hud_.text(6, kH - 14, kmh, palette::kHudText, 2);
+    // with the touch buttons on screen the bottom corners are theirs: the speed, its sign, the damage bar and the
+    // hints move up out of the way
+    const bool touch = input_.touch().shown();
+    const int low = touch ? 64 : kH;  // the bottom of the speed readout
+    hud_.text(6, low - 14, kmh, palette::kHudText, 2);
     for (int k = 0; k < 4; ++k)  // wanted stars, left of the minimap
         hud_.rect(kW - Minimap::kSize - 56 + k * 12, 6, 9, 9, k < town.stars() ? palette::kHudStar : palette::kHudStarOff);
     // the minimap, top right, with traffic, police and the job's markers on it, and its rotating N
@@ -591,16 +628,19 @@ void App::hud_single() {
     }
     if (st.limit > 0) {
         const bool over = car.speed() * 3.6 > st.limit * 1.1 && town.state() == TownState::Playing;
-        const int lx = 6 + hud_.text_width(kmh, 2) + 6, ly = kH - 26;
+        const int lx = 6 + hud_.text_width(kmh, 2) + 6, ly = low - 26;
         hud_.rect(lx - 1, ly - 1, 22, 24, kInk);
         hud_.rect(lx, ly, 20, 22, palette::kHudText);
         hud_.text(lx + 4, ly + 2, "MAX", kInk, 1, false);
         const std::string num = std::to_string(st.limit);
         hud_.text(lx + (20 - hud_.text_width(num, 2)) / 2, ly + 10, num, over ? palette::kHudRed : kInk, 2, false);
     }
-    hud_.text(kW - 82, kH - 13, "DMG", palette::kHudText);
-    hud_.rect(kW - 66, kH - 14, 60, 7, palette::kHudBar);
-    hud_.rect(kW - 65, kH - 13, static_cast<int>(58 * town.damage() / 100.0), 5, palette::kHudDamage);
+    {
+        const int bw = touch ? 40 : 60, bx = touch ? kW - Minimap::kSize - 10 - bw : kW - 66, by = touch ? 19 : kH - 14;
+        hud_.text(bx - 16, by + 1, "DMG", palette::kHudText);
+        hud_.rect(bx, by, bw, 7, palette::kHudBar);
+        hud_.rect(bx + 1, by + 1, static_cast<int>((bw - 2) * town.damage() / 100.0), 5, palette::kHudDamage);
+    }
     hud_.text(6, 6, "$" + std::to_string(jobs.cash()), palette::kHudCash, 2);  // cash, in money green
     if (const Job* j = jobs.job()) {  // the job: timer, objective, and an arrow to the target
         const int secs = std::max(0, static_cast<int>(std::ceil(j->time_left)));
@@ -621,7 +661,7 @@ void App::hud_single() {
         }
     } else {
         const std::string h = jobs.hint(car);
-        if (!h.empty()) hud_.text((kW - hud_.text_width(h)) / 2, kH - 28, h, palette::kHudText);
+        if (!h.empty()) hud_.text((kW - hud_.text_width(h)) / 2, touch ? 64 : kH - 28, h, palette::kHudText);
     }
     if (!jobs.banner().empty()) {
         const std::uint8_t bc[3] = {jobs.banner_colour().r, jobs.banner_colour().g, jobs.banner_colour().b};
@@ -789,17 +829,40 @@ void App::draw_menu() {
 }
 
 void App::draw_pause() {
-    const int bw = 140, bh = 82, bx = (kW - bw) / 2, by = (kH - bh) / 2;
+    const int bw = kPauseW, bh = kPauseH, bx = (kW - bw) / 2, by = (kH - bh) / 2;
     hud_.rect(bx - 2, by - 2, bw + 4, bh + 4, kInk);
     hud_.rect(bx, by, bw, bh, kPanel);
     hud_.text((kW - hud_.text_width("PAUSED", 2)) / 2, by + 6, "PAUSED", kYellow, 2);
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < kPauseCount; ++i) {
         const int ry = by + 24 + i * 17, rx = bx + 15, rw = bw - 30, rh = 14;
         const bool sel = i == pause_index_;
         hud_.rect(rx, ry, rw, rh, sel ? kOrange : kPanel);
         if (!sel) hud_.rect(rx, ry + rh - 1, rw, 1, kPanelEdge);
-        const std::string label = kPause[i];
+        const std::string label = i == 1 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH") : kPause[i];
         hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 2, label, sel ? kInk : kDim, 2);
+    }
+}
+
+// The on-screen touch buttons (core/touch.h): white outlines with their label, filled while a finger is on them,
+// so the road shows through.
+void App::draw_touch() {
+    const Touch& t = input_.touch();
+    for (const TouchButton& b : t.buttons()) {
+        const bool down = t.pressed(b.name);
+        if (down) hud_.rect(b.x, b.y, b.w, b.h, kYellow);
+        const std::uint8_t* edge = down ? kInk : palette::kHudText;
+        hud_.rect(b.x, b.y, b.w, 1, edge);
+        hud_.rect(b.x, b.y + b.h - 1, b.w, 1, edge);
+        hud_.rect(b.x, b.y, 1, b.h, edge);
+        hud_.rect(b.x + b.w - 1, b.y, 1, b.h, edge);
+        const std::uint8_t* ink_or_text = down ? kInk : palette::kHudText;
+        const float cx = b.x + b.w / 2.0f, cy = b.y + b.h / 2.0f;
+        if (std::string(b.name) == "left") { hud_.tri(cx + 7, cy - 9, cx + 7, cy + 9, cx - 8, cy, ink_or_text); continue; }
+        if (std::string(b.name) == "right") { hud_.tri(cx - 7, cy - 9, cx - 7, cy + 9, cx + 8, cy, ink_or_text); continue; }
+        const int scale = b.w >= 50 ? 2 : 1;
+        const std::string label = b.label;
+        hud_.text(b.x + (b.w - hud_.text_width(label, scale)) / 2, b.y + (b.h - 5 * scale) / 2, label,
+                  down ? kInk : palette::kHudText, scale, !down);
     }
 }
 

@@ -37,8 +37,12 @@ int Input::pad_player(SDL_JoystickID id, int players) const {
 }
 
 void Input::handle(const SDL_Event& e) {
+    touch_.handle(e, win_w_, win_h_);
+    if (e.type == SDL_CONTROLLERBUTTONDOWN || e.type == SDL_KEYDOWN) touch_.hide();  // a pad or keys: no buttons
     switch (e.type) {
         case SDL_QUIT: acts_.quit = true; break;
+        case SDL_APP_WILLENTERBACKGROUND: acts_.background = true; break;
+        case SDL_APP_DIDENTERFOREGROUND: acts_.foreground = true; break;
         case SDL_CONTROLLERDEVICEADDED: open(e.cdevice.which); break;
         case SDL_CONTROLLERDEVICEREMOVED: {
             SDL_GameController* gone = SDL_GameControllerFromInstanceID(e.cdevice.which);
@@ -87,6 +91,8 @@ void Input::handle(const SDL_Event& e) {
 }
 
 Actions Input::actions() {
+    for (const std::string& tap : touch_.update())
+        if (tap == "pause") acts_.pause = true;
     const Actions a = acts_;
     acts_ = Actions{};
     return a;
@@ -126,6 +132,13 @@ Controls Input::controls(int i, int players, bool battle) const {
         c.brake = k[SDL_SCANCODE_DOWN];
         c.handbrake = k[SDL_SCANCODE_RCTRL] || k[SDL_SCANCODE_KP_0];
         c.bumper = k[SDL_SCANCODE_RSHIFT];
+    }
+    if (players <= 1 && !battle && touch_.shown()) {  // the on-screen buttons drive the one player
+        if (c.steer == 0.0f) c.steer = static_cast<float>(touch_.pressed("right") - touch_.pressed("left"));
+        c.throttle = c.throttle || touch_.pressed("gas");
+        c.brake = c.brake || touch_.pressed("brake");
+        c.handbrake = c.handbrake || touch_.pressed("hand");
+        c.bumper = c.bumper || touch_.pressed("hop");
     }
     const int npads = static_cast<int>(pads_.size());
     const int kpads = std::min(npads, std::max(players, 1)), first = std::max(players, 1) - kpads;

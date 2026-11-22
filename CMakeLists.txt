@@ -16,6 +16,7 @@ find_library(GLES3_LIB NAMES GLESv2 GLESv3 REQUIRED)
 
 add_library(amr_core STATIC
   src/core/input.cpp
+  src/core/touch.cpp
   src/core/sound.cpp
   src/render/target.cpp
   src/render/shader.cpp
@@ -91,3 +92,7 @@ set_tests_properties(train PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(test_sound tests/test_sound.cpp)
 target_link_libraries(test_sound PRIVATE amr_core)
 add_test(NAME sound COMMAND test_sound)
+
+add_executable(test_touch tests/test_touch.cpp)
+target_link_libraries(test_touch PRIVATE amr_core)
+add_test(NAME touch COMMAND test_touch)

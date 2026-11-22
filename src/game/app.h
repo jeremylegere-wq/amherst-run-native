@@ -42,6 +42,8 @@ struct Options {
     bool trains = true;
     double train_in = -1;       // tests: the first train comes after this many seconds
     int weather = 0;            // render/weather.h kWeathers (F4 cycles them)
+    bool touch = false;         // show the on-screen touch buttons from the start (the mouse works them on a desktop)
+    bool low_quality = false;   // phones: a shorter draw distance, no see-through shadows (the pause menu switches)
 };
 
 class App {
@@ -71,6 +73,7 @@ private:
     void view_rect(int i, int& x, int& y, int& w, int& h) const;
     void draw_menu();
     void draw_pause();
+    void draw_touch();
     void menu_input(const Actions& a);
     void pause_input(const Actions& a);
 

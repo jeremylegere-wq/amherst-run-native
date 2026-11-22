@@ -54,8 +54,13 @@ public:
     // and snow are drawn here. Changing it rebuilds the chunks.
     void set_weather(int k);
     const Weather& weather() const { return *weather_; }
+    // Quality (phones): low draws 170 m instead of 260 m and leaves out the see-through shadows.
+    void set_low_quality(bool low) { low_ = low; }
+    bool low_quality() const { return low_; }
+    float draw_dist() const { return low_ ? kDrawDistLow : kDrawDist; }
+    float far_plane() const { return draw_dist() + 40.0f; }
     static constexpr float kChunk = 200.0f;
-    static constexpr float kDrawDist = 260.0f;
+    static constexpr float kDrawDist = 260.0f, kDrawDistLow = 170.0f;
     static constexpr int kBuildsPerFrame = 2;  // new chunks built a frame, nearest first (no hitches)
 
 private:
@@ -78,6 +83,7 @@ private:
     unsigned program_ = 0;
     int u_mvp_ = -1, u_model_ = -1, u_eye_ = -1, u_fog_ = -1, u_fog_range_ = -1, u_tint_ = -1, u_inked_ = -1, u_grade_ = -1;
     const Weather* weather_ = &kWeathers[0];
+    bool low_ = false;
     Mat4 vp_;
     std::unordered_map<long long, std::unique_ptr<Chunk>> chunks_;
     std::unordered_map<long long, std::vector<Item>> items_;  // what each chunk holds, sorted out at start

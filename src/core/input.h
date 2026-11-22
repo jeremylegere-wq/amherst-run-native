@@ -4,7 +4,10 @@
 #pragma once
 #include <SDL.h>
 
+#include <utility>
 #include <vector>
+
+#include "core/touch.h"
 
 namespace amr {
 
@@ -29,6 +32,8 @@ struct Actions {
     bool quit = false;        // the window was closed
     int respawn = -1;         // split screen: this player asked for a respawn (Y, or R / Backspace)
     bool weather = false;     // F4: the next weather preset
+    bool background = false;  // the app went to the background (a phone): pause, and stop the sound
+    bool foreground = false;  // ... and came back
 };
 
 class Input {
@@ -48,6 +53,11 @@ public:
     Controls controls(int i, int players, bool battle = false) const;
     int pads() const { return static_cast<int>(pads_.size()); }
     void set_players(int n) { players_ = n; }  // how many are playing (whose pad's Y respawns whom)
+    // Touch: the window's drawable size (finger positions are fractions of it), and the on-screen buttons.
+    void set_window_size(int w, int h) { win_w_ = w; win_h_ = h; }
+    Touch& touch() { return touch_; }
+    const Touch& touch() const { return touch_; }
+    std::vector<std::pair<int, int>> taps() { return touch_.taps(); }  // menus: where fingers came down
 
 private:
     void open(int device_index);
@@ -56,6 +66,8 @@ private:
     Actions acts_;
     bool stick_held_ = false;   // menu: the stick has to come back before it moves again
     int players_ = 1;
+    Touch touch_;
+    int win_w_ = 960, win_h_ = 540;
 };
 
 // A stick value, 0 inside the dead zone (game/main.py _joy_axis).

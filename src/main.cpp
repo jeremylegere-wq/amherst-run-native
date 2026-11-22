@@ -10,6 +10,7 @@
 //   amherst-run --no-cops | --heat H             no police at all | start with a wanted level (0-4)
 //   amherst-run --no-train | --train-in S        no train | the first train after S seconds (default 50-90)
 //   amherst-run --weather clear|overcast|fog|golden|snow   the weather (F4 changes it while playing)
+//   amherst-run --touch | --quality low|high       on-screen touch buttons (the mouse works them) | phone quality
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 //                                                   (add --menu to picture the start screen instead)
@@ -85,6 +86,12 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
         } else if (!std::strcmp(s, "--weather") && more) {
             a.weather = amr::weather_index(argv[++i]);
             if (a.weather < 0) return false;
+        } else if (!std::strcmp(s, "--touch")) {
+            a.touch = true;
+        } else if (!std::strcmp(s, "--quality") && more) {
+            const std::string q = argv[++i];
+            if (q != "low" && q != "high") return false;
+            a.low_quality = q == "low";
         } else if (!std::strcmp(s, "--map") && more) {
             map = argv[++i];
         } else if (!std::strcmp(s, "--at") && more) {
@@ -111,6 +118,9 @@ int main(int argc, char** argv) {
     if (map_path.empty()) map_path = default_map();
 #ifdef __WINRT__
     SDL_SetHint(SDL_HINT_WINRT_HANDLE_BACK_BUTTON, "1");  // Xbox: B is the game's, not the console's "go back"
+#endif
+#ifdef __ANDROID__
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");  // the phone's Back pauses (like Esc) instead of closing
 #endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {  // (audio starts later, if it can)
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());

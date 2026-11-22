@@ -325,7 +325,7 @@ MapRenderer::Chunk* MapRenderer::chunk(int cx, int cy, FrameStats& stats, bool m
 
 void MapRenderer::warm(float x, float y) {
     FrameStats stats;
-    const float reach = kDrawDist + kChunk * 0.71f;
+    const float reach = draw_dist() + kChunk * 0.71f;
     for (int cx = static_cast<int>(std::floor((x - reach) / kChunk)); cx <= static_cast<int>(std::floor((x + reach) / kChunk)); ++cx)
         for (int cy = static_cast<int>(std::floor((y - reach) / kChunk)); cy <= static_cast<int>(std::floor((y + reach) / kChunk)); ++cy)
             if (std::hypot((cx + 0.5f) * kChunk - x, (cy + 0.5f) * kChunk - y) <= reach) chunk(cx, cy, stats, true);
@@ -686,7 +686,7 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     // screen so the town is not drawn back to front, and count clockwise triangles as front faces.
     Mat4 flip;
     flip.at(1, 1) = -1;
-    const Mat4 proj = perspective(cam.fovy, aspect, 0.5f, kDrawDist + 40.0f);
+    const Mat4 proj = perspective(cam.fovy, aspect, 0.5f, far_plane());
     vp_ = proj * look_at(transform_point(flip, cam.eye), transform_point(flip, cam.target)) * flip;
     glFrontFace(GL_CW);
     glUseProgram(program_);
@@ -696,7 +696,7 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     glUniform3f(u_fog_, W.fog[0] / 255.0f, W.fog[1] / 255.0f, W.fog[2] / 255.0f);
     {  // the clear day's fog runs from 70 m to the draw distance; thicker weather brings both in
         const float k = W.fog_scale / kWeathers[0].fog_scale;
-        const float near = 70.0f / k, far = std::min(kDrawDist, near + (kDrawDist - 70.0f) / k);
+        const float dd = draw_dist(), near = 70.0f / k * dd / kDrawDist, far = std::min(dd, near + (dd - 70.0f) / k);
         glUniform2f(u_fog_range_, std::min(near, far - 10.0f), far);
     }
     glUniform4f(u_grade_, W.grade[0], W.grade[1], W.grade[2], W.desat);
@@ -707,7 +707,7 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     glEnable(GL_CULL_FACE);
 
     const Vec3 fwd = normalize(Vec3{cam.target.x - cam.eye.x, cam.target.y - cam.eye.y, 0});
-    const float reach = kDrawDist + kChunk * 0.71f;
+    const float reach = draw_dist() + kChunk * 0.71f;
     std::vector<std::pair<float, std::pair<int, int>>> wanted;  // (distance, chunk) in view
     const int c0x = static_cast<int>(std::floor((cam.eye.x - reach) / kChunk));
     const int c1x = static_cast<int>(std::floor((cam.eye.x + reach) / kChunk));
@@ -764,7 +764,7 @@ void MapRenderer::set_weather(int k) {
 }
 
 void MapRenderer::draw_shadows(const std::vector<float>& tris, const std::uint8_t rgba[4]) {
-    if (!shadow_prog_ || !weather_->shadows) return;
+    if (!shadow_prog_ || !weather_->shadows || low_) return;
     glUseProgram(shadow_prog_);
     glUniformMatrix4fv(glGetUniformLocation(shadow_prog_, "u_mvp"), 1, GL_FALSE, vp_.m);
     glUniform4f(glGetUniformLocation(shadow_prog_, "u_rgba"), rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f,

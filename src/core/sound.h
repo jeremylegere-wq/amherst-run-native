@@ -19,6 +19,7 @@ public:
     Sound& operator=(const Sound&) = delete;
     bool ok() const { return dev_ != 0; }
     void play(const std::string& name);
+    void pause(bool on) { if (dev_) SDL_PauseAudioDevice(dev_, on ? 1 : 0); }  // the app is in the background
     // The samples of an effect (tests: they are made even without a sound device).
     const std::vector<Sint16>* samples(const std::string& name) const;
 
