@@ -1,9 +1,17 @@
-# Android build - not set up yet
+# Android build
 
-Phase 0 still needs this. What it takes (works on Linux):
+CI builds a debug APK on every push (`.github/workflows/ci.yml`, job `android`); download it from the run's
+artifacts (`amherst-run-android-debug`). It holds the game and SDL2 for arm64, armv7 and x86_64 phones and the baked
+map. Not yet tried on a device. No touch controls yet (phase 5): play it with a Bluetooth or USB gamepad.
 
-1. Android SDK + NDK (Android Studio, or the command-line tools) and a JDK.
-2. SDL2's `android-project` template (in the SDL2 source): copy it here, point its `jni/` at SDL2's source and this
-   repository's `src/`, set the app id (for example `ca.amherstrun.game`) and landscape orientation.
-3. `./gradlew assembleDebug` builds an APK to sideload; a pad (Bluetooth or USB) works through SDL's GameController.
-   Touch controls come in phase 5.
+To install it on a phone: allow installs from unknown sources (or turn on USB debugging and use
+`adb install app-debug.apk`), then open the APK.
+
+To build it yourself (Linux, macOS or Windows): the Android SDK with an NDK and CMake, a JDK 17 and Gradle 8.7.
+
+    python3 tools/fetch_map.py                                   # then copy assets/amherst.amr to app/assets/
+    # unpack SDL2-2.32.10's source release as platform/android/SDL2
+    cd platform/android && gradle assembleDebug -PndkVersion=<ndk folder name> -PcmakeVersion=<cmake folder name>
+
+The project: `app/build.gradle` (Gradle), `app/jni/CMakeLists.txt` (SDL2 from source as libSDL2.so, the game as
+libmain.so), `AmherstRunActivity` (SDL's activity: landscape, full screen, OpenGL ES 3.0).

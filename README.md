@@ -23,8 +23,8 @@ the street style's detail. The Xbox and Android builds (phase 0) are still to do
 | Target | Status |
 |---|---|
 | Linux (desktop, Batocera) | builds and runs |
-| Xbox One, Developer Mode (UWP) | not built yet: needs Windows + Visual Studio 2022 (see `platform/uwp/README.md`) |
-| Android | not built yet: needs the Android SDK + NDK (see `platform/android/README.md`) |
+| Xbox One, Developer Mode (UWP) | in progress: GitHub's Windows runner builds SDL2 for UWP; the game's package next (see `platform/uwp/README.md`) |
+| Android | CI builds a debug APK (artifact `amherst-run-android-debug`); not yet tried on a device (see `platform/android/README.md`) |
 | Windows, macOS desktop | should build with CMake; not tried yet |
 
 ## Build and run (Linux)

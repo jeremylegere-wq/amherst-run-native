@@ -1,16 +1,15 @@
-# Xbox One (Developer Mode) build - not set up yet
+# Xbox One (Developer Mode) build - in progress
 
-Phase 0 still needs this. What it takes:
+No Windows PC is needed: GitHub's Windows runners build it, and the package is installed from a web browser
+through the Xbox Device Portal.
 
-1. A Windows 10/11 PC with **Visual Studio 2022** and the *Universal Windows Platform development* and
-   *Desktop development with C++* workloads.
-2. **SDL2 source** (2.30.x, the last SDL line with UWP/WinRT support; SDL3 dropped it). Its `VisualC-WinRT` project
-   builds SDL2 for UWP; SDL's `docs/README-winrt.md` explains the setup, including **ANGLE** for OpenGL ES.
-3. A UWP app project here (`AmherstRun.vcxproj` + `Package.appxmanifest`) that compiles `src/` with SDL2-WinRT.
-   The manifest must declare the app a **Game** so Xbox gives it the game resources (up to 5 GB of memory, the larger
-   CPU and GPU share) rather than the 1 GB app limit.
-4. The console: a Partner Center developer account, the *Xbox Dev Mode* app to switch the console to Developer Mode,
-   then deploy from Visual Studio or upload the `.appx`/`.msix` in the Device Portal. In Dev Home, set the app's type
-   to **Game**.
+What CI has shown (job `windows-uwp-probe`): the runner has Visual Studio Enterprise 2022 with the UWP workload and
+Windows SDKs up to 10.0.26100, and SDL2 2.32.10's `VisualC-WinRT/SDL-UWP.vcxproj` builds for x64.
 
-CI can build the package on GitHub's Windows runners once the project exists.
+Still to do:
+1. ANGLE (OpenGL ES on Direct3D 11), which SDL2's UWP port uses for OpenGL ES. It is a separate library: it needs
+   the project owner's OK before it is added.
+2. A UWP app project for the game (`Package.appxmanifest` declaring a Game, so the console gives it up to 5 GB of
+   memory and the larger CPU and GPU share), built and signed in CI, the package kept as an artifact.
+3. On the console: a Partner Center developer account, the Xbox Dev Mode app, then upload the package (and its
+   test certificate if asked) in the Device Portal and, in Dev Home, set the app's type to Game.
