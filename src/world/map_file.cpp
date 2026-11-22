@@ -182,6 +182,20 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             if (p.segment) { p.x2 = r.get<float>(); p.y2 = r.get<float>(); }
             if (p.kind >= nk) return false;
         }
+    } else if (tag == "GRPH") {
+        const auto nn = r.count(16);
+        m.graph_nodes.resize(nn);
+        for (auto& n : m.graph_nodes) { n.x = r.get<double>(); n.y = r.get<double>(); }
+        const auto ne = r.count(24);
+        m.graph_edges.resize(ne);
+        for (auto& e : m.graph_edges) {
+            e.a = r.get<std::uint32_t>(); e.b = r.get<std::uint32_t>();
+            e.type = r.get<std::uint8_t>();
+            r.get<std::uint8_t>(); r.get<std::uint8_t>(); r.get<std::uint8_t>();
+            e.width = r.get<float>(); e.kmh = r.get<float>();
+            e.name = r.get<std::uint32_t>();
+            if (e.a >= nn || e.b >= nn) return false;
+        }
     } else {
         return true;  // a newer chunk this version does not know: skip it
     }

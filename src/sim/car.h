@@ -16,6 +16,8 @@ struct CarModel {
 
 // Player cars (game/car.py MODELS, PLAYER_MODELS): boxy retro SUV, compact crossover, mid-size SUV, quad cab pickup.
 const CarModel& player_model(int index);
+// The traffic and police cars' model (game/car.py "sedan").
+const CarModel& sedan_model();
 
 struct CarInput {
     bool throttle = false, brake = false;
@@ -25,6 +27,7 @@ struct CarInput {
 
 class Car {
 public:
+    virtual ~Car() = default;
     Car(double x, double y, double heading, const CarModel& model);
 
     // One physics step (game/car.py Car.update). on_road: the surface under the car is a road or a lot.

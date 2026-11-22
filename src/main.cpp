@@ -4,6 +4,7 @@
 //
 //   amherst-run                                  play (pad: left stick, A handbrake, LB/RB hop and slide, Back quits)
 //   amherst-run --map path/to/amherst.amr        another map file (default: assets/amherst.amr beside the game)
+//   amherst-run --traffic N                      civilian cars around you downtown (default 16, 0 for none)
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 #include <SDL.h>
@@ -24,6 +25,8 @@
 #include "render/target.h"
 #include "sim/car.h"
 #include "sim/collision.h"
+#include "sim/roadgraph.h"
+#include "sim/town.h"
 #include "world/map_file.h"
 #include "world/world.h"
 
@@ -40,6 +43,7 @@ struct Args {
     int frames = -1;
     std::string screenshot, map;
     bool at = false, has_heading = false;
+    int traffic = 16;
     float at_x = 0, at_y = 0, heading = 0;
 };
 
@@ -68,6 +72,8 @@ bool parse(int argc, char** argv, Args& a) {
             a.frames = std::atoi(argv[++i]);
         } else if (!std::strcmp(argv[i], "--screenshot") && i + 1 < argc) {
             a.screenshot = argv[++i];
+        } else if (!std::strcmp(argv[i], "--traffic") && i + 1 < argc) {
+            a.traffic = std::atoi(argv[++i]);
         } else if (!std::strcmp(argv[i], "--map") && i + 1 < argc) {
             a.map = argv[++i];
         } else if (!std::strcmp(argv[i], "--at") && i + 1 < argc) {
@@ -123,6 +129,7 @@ int main(int argc, char** argv) {
                              "tools/fetch_map.py)\n", err.c_str());
         return 1;
     }
+    amr::RoadGraph graph(map);
     amr::World world(std::move(map));
     amr::MapRenderer renderer(world);
     amr::RenderTarget target(kInternalW, kInternalH);
@@ -138,6 +145,7 @@ int main(int argc, char** argv) {
     const float sx = args.at ? args.at_x : world.map().spawn_x, sy = args.at ? args.at_y : world.map().spawn_y;
     amr::Car car(sx, sy, args.has_heading ? args.heading : world.map().spawn_heading, amr::player_model(0));
     car.z = world.height_at(sx, sy, world.ground(sx, sy));
+    amr::Town town(world, graph, 1, args.traffic);
     amr::ChaseCamera chase(car);
     chase.update(car, world, 0.0, true);
     renderer.warm(sx, sy);
@@ -167,6 +175,7 @@ int main(int argc, char** argv) {
             car.update(dt, drive, world.on_road(car.x, car.y));
             amr::move_and_slide(car, world, px, py, true);
             amr::settle_height(car, world, dt);
+            town.update(dt, car);
             chase.update(car, world, dt);
             acc -= 1.0 / kPhysicsHz;
         }
@@ -186,6 +195,15 @@ int main(int argc, char** argv) {
         body.at(0, 1) *= wid; body.at(1, 1) *= wid;
         body.at(2, 2) = 1.65f;
         renderer.draw_box(body, amr::palette::kCarYellow);
+        for (const auto& c : town.cars()) {  // traffic: boxes in their colours, for now
+            amr::Mat4 m = amr::translate({static_cast<float>(c->x), static_cast<float>(c->y), static_cast<float>(c->z) + 0.3f}) *
+                          amr::rotate_z(static_cast<float>(c->heading));
+            const float l = static_cast<float>(c->length), w = static_cast<float>(c->width);
+            m.at(0, 0) *= l; m.at(1, 0) *= l;
+            m.at(0, 1) *= w; m.at(1, 1) *= w;
+            m.at(2, 2) = 1.45f;
+            renderer.draw_box(m, amr::palette::kTraffic[c->colour]);
+        }
         if (args.frames >= 0) {
             glFinish();  // honest timing in test runs: wait for the GPU
             const double ms = (SDL_GetPerformanceCounter() - t_frame) * 1000.0 / SDL_GetPerformanceFrequency();
@@ -209,8 +227,9 @@ int main(int argc, char** argv) {
     }
     int code = 0;
     if (args.frames > 1)
-        std::printf("frames: %d, draw avg %.2f ms, worst %.2f ms (frame %d, %d chunks built), %lld triangles a frame\n",
-                    frame, frame_ms_total / (frame - 1), frame_ms_worst, worst_frame, worst_built, tris_total / frame);
+        std::printf("frames: %d, draw avg %.2f ms, worst %.2f ms (frame %d, %d chunks built), %lld triangles a frame, "
+                    "%zu traffic cars\n", frame, frame_ms_total / (frame - 1), frame_ms_worst, worst_frame, worst_built,
+                    tris_total / frame, town.cars().size());
     if (!args.screenshot.empty()) {
         if (target.save_bmp(args.screenshot)) {
             std::printf("wrote %s (car at %.1f, %.1f, %.1f)\n", args.screenshot.c_str(), car.x, car.y, car.z);

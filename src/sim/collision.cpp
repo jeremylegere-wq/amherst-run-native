@@ -110,4 +110,43 @@ void settle_height(Car& car, const World& w, double dt) {
     }
 }
 
+double collide_cars(Car& a, Car& b) {
+    constexpr double kLevelGap = 2.6, kRestitution = 0.35;
+    if (std::fabs(a.x - b.x) > 6.0 || std::fabs(a.y - b.y) > 6.0 || std::fabs(a.z - b.z) > kLevelGap) return 0.0;
+    auto radius = [](const Car& c) { return c.width / 2 + 0.25; };
+    auto circles = [&](const Car& c, double out[2][2]) {
+        const double off = std::max(0.4, c.length / 2 - radius(c));
+        out[0][0] = c.x + c.fx() * off; out[0][1] = c.y + c.fy() * off;
+        out[1][0] = c.x - c.fx() * off; out[1][1] = c.y - c.fy() * off;
+    };
+    double ca[2][2], cb[2][2];
+    circles(a, ca);
+    circles(b, cb);
+    const double limit = radius(a) + radius(b);
+    bool hit = false;
+    double pen = 0, nx = 0, ny = 0;
+    for (auto& p : ca)
+        for (auto& q : cb) {
+            const double dx = p[0] - q[0], dy = p[1] - q[1], d2 = dx * dx + dy * dy;
+            if (d2 < limit * limit) {
+                const double d = std::sqrt(d2), pn = limit - d;
+                if (!hit || pn > pen) {
+                    hit = true;
+                    pen = pn;
+                    if (d < 1e-6) { nx = 1.0; ny = 0.0; } else { nx = dx / d; ny = dy / d; }
+                }
+            }
+        }
+    if (!hit) return 0.0;  // the normal points from b towards a
+    const double ma = a.mass, mb = b.mass, tot = ma + mb;
+    a.x += nx * pen * mb / tot; a.y += ny * pen * mb / tot;
+    b.x -= nx * pen * ma / tot; b.y -= ny * pen * ma / tot;
+    const double rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+    if (rel >= 0) return 0.0;  // already separating
+    const double j = -(1.0 + kRestitution) * rel / (1.0 / ma + 1.0 / mb);
+    a.vx += j * nx / ma; a.vy += j * ny / ma;
+    b.vx -= j * nx / mb; b.vy -= j * ny / mb;
+    return -rel;
+}
+
 }  // namespace amr

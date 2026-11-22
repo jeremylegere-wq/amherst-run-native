@@ -69,6 +69,17 @@ struct Prop {
     float x = 0, y = 0, h = 0, r = 0, cr = 0, heading = 0, x2 = 0, y2 = 0;
 };
 
+// The road graph as baked (game/roadgraph.py RoadGraph): see sim/roadgraph.h for the queries.
+struct GraphNode {
+    double x = 0, y = 0;
+};
+struct GraphEdge {
+    std::uint32_t a = 0, b = 0;
+    std::uint8_t type = kSide;
+    float width = 8, kmh = 50;
+    std::uint32_t name = 0;
+};
+
 struct TerrainGrid {
     float x0 = 0, y0 = 0, step = 12.5f;
     int nx = 0, ny = 0;
@@ -92,6 +103,8 @@ struct MapData {
     std::vector<Poly> polys;
     std::vector<std::string> prop_kinds;
     std::vector<Prop> props;
+    std::vector<GraphNode> graph_nodes;
+    std::vector<GraphEdge> graph_edges;
     int prop_kind(const std::string& name) const;  // index of a kind, -1 if the map has none of it
 };
 

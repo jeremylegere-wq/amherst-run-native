@@ -23,7 +23,10 @@ add_library(amr_core STATIC
   src/world/map_file.cpp
   src/world/world.cpp
   src/sim/car.cpp
-  src/sim/collision.cpp)
+  src/sim/collision.cpp
+  src/sim/roadgraph.cpp
+  src/sim/ai.cpp
+  src/sim/town.cpp)
 target_include_directories(amr_core PUBLIC src)
 target_link_libraries(amr_core PUBLIC SDL2::SDL2 ${GLES3_LIB})
 if(MSVC)
@@ -52,3 +55,8 @@ add_executable(test_drive tests/test_drive.cpp)
 target_link_libraries(test_drive PRIVATE amr_core)
 add_test(NAME drive COMMAND test_drive "${AMR_MAP}" "${AMR_GOLDEN}/drive.csv")
 set_tests_properties(drive PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_traffic tests/test_traffic.cpp)
+target_link_libraries(test_traffic PRIVATE amr_core)
+add_test(NAME traffic COMMAND test_traffic "${AMR_MAP}" "${AMR_GOLDEN}")
+set_tests_properties(traffic PROPERTIES SKIP_RETURN_CODE 77)

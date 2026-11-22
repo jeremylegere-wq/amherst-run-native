@@ -28,6 +28,11 @@ double copysign1(double v) { return std::copysign(1.0, v); }
 
 const CarModel& player_model(int index) { return kModels[((index % 4) + 4) % 4]; }
 
+const CarModel& sedan_model() {
+    static const CarModel sedan{"sedan", 4.2, 1.8, 1.0, 1.0};
+    return sedan;
+}
+
 Car::Car(double x0, double y0, double h, const CarModel& m)
     : x(x0), y(y0), heading(h), length(m.length), width(m.width), mass(m.mass), power_scale(m.power) {}
 
