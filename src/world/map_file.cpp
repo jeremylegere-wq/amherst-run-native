@@ -163,6 +163,25 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
             r.points(p.points);
             r.tris(p.tris, p.points.size());
         }
+    } else if (tag == "PROP") {
+        const auto nk = r.count(4);
+        m.prop_kinds.resize(nk);
+        for (auto& k : m.prop_kinds) k = r.str();
+        const auto n = r.count(22);
+        m.props.resize(n);
+        for (auto& p : m.props) {
+            p.kind = r.get<std::uint8_t>();
+            p.c = r.get<std::uint8_t>();
+            p.colour = r.rgb();
+            p.segment = (r.get<std::uint8_t>() & 1) != 0;
+            p.x = r.get<float>(); p.y = r.get<float>();
+            p.h = r.get<std::uint16_t>() / 100.0f;
+            p.r = r.get<std::uint16_t>() / 100.0f;
+            p.cr = r.get<std::uint16_t>() / 100.0f;
+            p.heading = r.get<std::int16_t>() / 1000.0f;
+            if (p.segment) { p.x2 = r.get<float>(); p.y2 = r.get<float>(); }
+            if (p.kind >= nk) return false;
+        }
     } else {
         return true;  // a newer chunk this version does not know: skip it
     }
@@ -170,6 +189,12 @@ bool read_chunk(const std::string& tag, Reader& r, MapData& m) {
 }
 
 }  // namespace
+
+int MapData::prop_kind(const std::string& name) const {
+    for (std::size_t i = 0; i < prop_kinds.size(); ++i)
+        if (prop_kinds[i] == name) return static_cast<int>(i);
+    return -1;
+}
 
 bool parse_map(const std::uint8_t* data, std::size_t size, MapData& out, std::string& error) {
     out = MapData{};

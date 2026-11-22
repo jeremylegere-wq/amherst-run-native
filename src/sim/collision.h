@@ -1,5 +1,5 @@
-// Car against the world: buildings and the map edge (game/collision.py move_and_slide), and easing onto the
-// ground or an overpass deck with the downhill pull (settle_height). Trees and poles come with the props.
+// Car against the world: trees and posts, buildings and the map edge (game/collision.py move_and_slide), and easing onto the
+// ground or an overpass deck with the downhill pull (settle_height).
 #pragma once
 #include "sim/car.h"
 #include "world/world.h"

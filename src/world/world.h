@@ -25,6 +25,21 @@ public:
     bool on_road(double x, double y) const;
     bool in_lot(double x, double y) const;
     bool in_building(double x, double y) const;
+    // Props within r of (x, y) (a square test, like world.py props_near).
+    template <typename F>
+    void props_near(double x, double y, double r, F f) const {
+        const int gx0 = static_cast<int>(std::floor((x - r) / 40.0)), gx1 = static_cast<int>(std::floor((x + r) / 40.0));
+        const int gy0 = static_cast<int>(std::floor((y - r) / 40.0)), gy1 = static_cast<int>(std::floor((y + r) / 40.0));
+        for (int gx = gx0; gx <= gx1; ++gx)
+            for (int gy = gy0; gy <= gy1; ++gy) {
+                auto it = prop_cells_.find((static_cast<long long>(gx) << 32) ^ static_cast<unsigned>(gy));
+                if (it == prop_cells_.end()) continue;
+                for (int i : it->second) {
+                    const Prop& p = map_.props[i];
+                    if (std::fabs(p.x - x) <= r && std::fabs(p.y - y) <= r) f(p);
+                }
+            }
+    }
     // Unit normal of the ground at (x, y), sampled half a grid step either side (terrain.py Terrain.normal).
     void ground_normal(double x, double y, double& nx, double& ny, double& nz) const;
 
@@ -37,6 +52,7 @@ private:
     std::unordered_map<long long, std::vector<Seg>> road_cells_;      // 40 m cell -> road segments touching it
     std::unordered_map<long long, std::vector<int>> building_cells_;  // 40 m cell -> buildings whose box touches it
     std::unordered_map<long long, std::vector<int>> lot_cells_;       // 40 m cell -> parking lot polygons
+    std::unordered_map<long long, std::vector<int>> prop_cells_;      // 40 m cell -> props standing in it
 };
 
 // Ray-casting point-in-polygon (world.py point_in_polygon).

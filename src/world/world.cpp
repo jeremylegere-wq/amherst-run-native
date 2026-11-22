@@ -57,6 +57,10 @@ World::World(MapData data) : map_(std::move(data)) {
         box_of(map_.buildings[i].points, x0, y0, x1, y1);
         for_cells(x0, y0, x1, y1, [&](long long k) { building_cells_[k].push_back(i); });
     }
+    for (int i = 0; i < static_cast<int>(map_.props.size()); ++i) {  // each prop in the cell it stands in
+        const Prop& p = map_.props[i];
+        prop_cells_[cell_key(static_cast<int>(std::floor(p.x / kCell)), static_cast<int>(std::floor(p.y / kCell)))].push_back(i);
+    }
     for (int i = 0; i < static_cast<int>(map_.polys.size()); ++i) {
         if (map_.polys[i].kind != kLot) continue;
         double x0, y0, x1, y1;

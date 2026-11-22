@@ -85,6 +85,43 @@ Vec3 mitre(const std::vector<Point2>& p, std::size_t i) {
     return m * (1.0f / std::max(c, 0.5f));  // keep the width; cap very sharp corners
 }
 
+// An upright box centred on (x, y) from z0 up h, hx along `heading` and hy across it (no bottom face).
+void prop_box(MeshBuilder& m, float x, float y, float z0, float hx, float hy, float h, float heading,
+              const std::uint8_t rgb[3]) {
+    const float c = std::cos(heading), s = std::sin(heading);
+    auto P = [&](float a, float b, float z) { return Vec3{x + c * a - s * b, y + s * a + c * b, z}; };
+    const Vec3 q[8] = {P(-hx, -hy, z0), P(hx, -hy, z0), P(hx, hy, z0), P(-hx, hy, z0),
+                       P(-hx, -hy, z0 + h), P(hx, -hy, z0 + h), P(hx, hy, z0 + h), P(-hx, hy, z0 + h)};
+    m.quad(q[4], q[5], q[6], q[7], rgb);
+    m.quad(q[0], q[1], q[5], q[4], rgb);
+    m.quad(q[1], q[2], q[6], q[5], rgb);
+    m.quad(q[2], q[3], q[7], q[6], rgb);
+    m.quad(q[3], q[0], q[4], q[7], rgb);
+}
+
+// A tree: a trunk and a two-tone canopy (lit top, shaded underside), eight-sided, round enough at 320x180.
+void tree(MeshBuilder& m, float x, float y, float g, float h, float r, int c) {
+    prop_box(m, x, y, g, 0.12f, 0.12f, h * 0.62f, 0.0f, palette::kTrunk);
+    const float zc = g + h - r * 0.8f, vz = r * 0.9f;
+    const std::uint8_t* lit = palette::kTreeLit[c % 3];
+    const std::uint8_t* shade = palette::kTreeShade[c % 3];
+    Vec3 ring[8];
+    for (int k = 0; k < 8; ++k) {
+        const float a = k * 0.7853982f;
+        ring[k] = {x + r * std::cos(a), y + r * std::sin(a), zc};
+    }
+    const Vec3 top{x, y, zc + vz}, bottom{x, y, zc - vz * 0.75f};
+    for (int k = 0; k < 8; ++k) {
+        const Vec3 a = ring[k], b = ring[(k + 1) % 8];
+        Vec3 n = normalize(cross(b - a, top - a));
+        const auto i0 = m.add(a, n, lit), i1 = m.add(b, n, lit), i2 = m.add(top, n, lit);
+        m.tri(i0, i1, i2);
+        n = normalize(cross(bottom - a, b - a));
+        const auto j0 = m.add(a, n, shade), j1 = m.add(bottom, n, shade), j2 = m.add(b, n, shade);
+        m.tri(j0, j1, j2);
+    }
+}
+
 }  // namespace
 
 std::vector<RoofFace> roof_faces(const std::vector<Point2>& pts, float h, int kind, float rh, bool across) {
@@ -216,6 +253,10 @@ void MapRenderer::bucket() {
         for (const auto& q : p) { sx += q.x; sy += q.y; }
         sx /= p.size(); sy /= p.size();
         add_box(sx, sy, sx, sy, {2, i, 0});  // whole building in the chunk holding its middle
+    }
+    for (int i = 0; i < static_cast<int>(m.props.size()); ++i) {
+        const Prop& p = m.props[i];
+        add_box(p.x, p.y, p.x, p.y, {4, i, 0});
     }
     for (int i = 0; i < static_cast<int>(m.polys.size()); ++i) {
         const auto& P = m.polys[i];
@@ -365,6 +406,42 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                         for (int k = 1; k + 1 < f.n; ++k) s.tri(idx[0], idx[k], idx[k + 1]);
                     }
                 }
+            } else if (it.kind == 4) {  // a prop
+                const Prop& p = m.props[it.index];
+                if (!inside(p.x, p.y)) continue;
+                const std::string& kind = m.prop_kinds[p.kind];
+                const float g = world_.ground(p.x, p.y);
+                const bool own = p.colour.r || p.colour.g || p.colour.b;
+                const std::uint8_t mine[3] = {p.colour.r, p.colour.g, p.colour.b};
+                if (kind == "tree") {
+                    tree(s, p.x, p.y, g, p.h, p.r, p.c);
+                } else if (kind == "lamp") {
+                    prop_box(s, p.x, p.y, g, 0.08f, 0.08f, p.h, 0, palette::kLamp);
+                } else if (kind == "pole") {
+                    prop_box(s, p.x, p.y, g, 0.14f, 0.14f, p.h, 0, palette::kWoodPole);
+                    prop_box(s, p.x, p.y, g + p.h - 0.6f, 0.06f, 0.9f, 0.12f, p.heading, palette::kWoodPole);  // cross-arm
+                } else if (kind == "tower") {
+                    prop_box(s, p.x, p.y, g, 1.2f, 1.2f, p.h, p.heading, palette::kSteel);
+                } else if (kind == "gravestone") {
+                    prop_box(s, p.x, p.y, g, 0.08f, 0.35f, p.h, p.heading, own ? mine : palette::kStone);
+                } else if (kind == "fence" && p.segment) {
+                    const float dx = p.x2 - p.x, dy = p.y2 - p.y, len = std::hypot(dx, dy);
+                    if (len > 0.05f)
+                        prop_box(s, (p.x + p.x2) / 2, (p.y + p.y2) / 2, g, len / 2, 0.05f, std::max(0.8f, p.h),
+                                 std::atan2(dy, dx), own ? mine : palette::kFence);
+                } else if (kind == "hydrant") {
+                    prop_box(s, p.x, p.y, g, 0.15f, 0.15f, 0.7f, 0, palette::kHydrant);
+                } else if (kind == "bin") {
+                    prop_box(s, p.x, p.y, g, 0.25f, 0.25f, 0.9f, 0, palette::kDarkGreen);
+                } else if (kind == "bench") {
+                    prop_box(s, p.x, p.y, g, 0.8f, 0.25f, 0.5f, p.heading, palette::kBench);
+                } else if (kind == "stopsign" || kind == "crossbuck" || kind == "signal") {
+                    prop_box(s, p.x, p.y, g, 0.05f, 0.05f, std::max(2.2f, p.h), 0, palette::kLamp);
+                    const std::uint8_t* head = kind == "stopsign" ? palette::kSignRed
+                                             : (kind == "signal" ? palette::kSignalBox : palette::kWhite);
+                    prop_box(s, p.x, p.y, g + std::max(2.2f, p.h) - 0.3f, 0.3f, 0.06f, 0.6f, p.heading, head);
+                }
+                // car_block (invisible), cenotaph, lighthouse, dam, horse: drawn later (phase 4)
             } else {  // an area triangle (land use, park, lot, water), split to follow the ground
                 const Poly& P = m.polys[it.index];
                 const Tri t = P.tris[it.sub];

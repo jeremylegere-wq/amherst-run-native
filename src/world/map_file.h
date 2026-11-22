@@ -60,6 +60,15 @@ struct Poly {
     std::vector<Tri> tris;
 };
 
+// A prop: a tree, lamp post, power pole, hydrant, gravestone, fence piece, parked-car block... (game/props.py)
+struct Prop {
+    std::uint8_t kind = 0;   // index into MapData::prop_kinds
+    std::uint8_t c = 0;      // trees: which of the style's canopy colours
+    Rgb colour;              // its own colour, if it has one (0 0 0 if not)
+    bool segment = false;    // fences: runs from (x, y) to (x2, y2)
+    float x = 0, y = 0, h = 0, r = 0, cr = 0, heading = 0, x2 = 0, y2 = 0;
+};
+
 struct TerrainGrid {
     float x0 = 0, y0 = 0, step = 12.5f;
     int nx = 0, ny = 0;
@@ -81,6 +90,9 @@ struct MapData {
     std::vector<Span> spans;
     std::vector<Building> buildings;
     std::vector<Poly> polys;
+    std::vector<std::string> prop_kinds;
+    std::vector<Prop> props;
+    int prop_kind(const std::string& name) const;  // index of a kind, -1 if the map has none of it
 };
 
 constexpr std::uint32_t kMapVersion = 1;
