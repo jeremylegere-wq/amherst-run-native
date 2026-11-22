@@ -10,6 +10,7 @@
 #include "render/landmarks.h"
 #include "render/palette.h"
 #include "render/shader.h"
+#include "render/weather.h"
 
 namespace amr {
 
@@ -44,6 +45,7 @@ uniform vec3 u_fog;
 uniform vec2 u_fog_range;
 uniform vec3 u_tint;    // white for the map; the car's colour on the white box
 uniform float u_inked;  // 1 for buildings, cars and props (they get ink outlines), 0 for the ground, roads, areas
+uniform vec4 u_grade;   // the weather's colour grade: multipliers, then desaturation
 out vec4 o_color;
 void main() {
     vec3 n = normalize(v_normal);
@@ -51,7 +53,9 @@ void main() {
     float lit = n.z > 0.9 ? 1.0 : (d > 0.25 ? 0.95 : 0.66);   // flat ground stays its own colour
     float dist = distance(v_world, u_eye);
     float fog = floor(clamp((dist - u_fog_range.x) / (u_fog_range.y - u_fog_range.x), 0.0, 1.0) * 4.0) / 4.0;
-    o_color = vec4(mix(v_color * u_tint * lit, u_fog, fog), u_inked);
+    vec3 c = min(v_color * u_tint * lit * u_grade.rgb, vec3(1.0));
+    c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), u_grade.a);
+    o_color = vec4(mix(c, u_fog, fog), u_inked);
 }
 )";
 
@@ -117,11 +121,11 @@ void prop_box(MeshBuilder& m, float x, float y, float z0, float hx, float hy, fl
 
 // A tree: a trunk and a rounded two-tone canopy (lit above, shaded underneath): eight sides, two rings, each tree
 // turned a little differently so a row of them does not line up. 32 triangles: round enough at 320x180.
-void tree(MeshBuilder& m, float x, float y, float g, float h, float r, int c) {
+void tree(MeshBuilder& m, float x, float y, float g, float h, float r, int c, bool snowy) {
     prop_box(m, x, y, g, 0.12f, 0.12f, h * 0.62f, 0.0f, palette::kTrunk);
     const float zc = g + h - r * 0.8f, vz = r * 0.9f;
-    const std::uint8_t* lit = palette::kTreeLit[c % 3];
-    const std::uint8_t* shade = palette::kTreeShade[c % 3];
+    const std::uint8_t* lit = snowy ? snow::kTreeLit[c % 3] : palette::kTreeLit[c % 3];
+    const std::uint8_t* shade = snowy ? snow::kTreeShade[c % 3] : palette::kTreeShade[c % 3];
     const float turn = std::fmod(std::fabs(x * 0.37f + y * 0.61f), 0.785f);
     Vec3 lo[8], hi[8];
     for (int k = 0; k < 8; ++k) {
@@ -217,6 +221,7 @@ MapRenderer::MapRenderer(const World& world) : world_(world) {
     u_eye_ = glGetUniformLocation(program_, "u_eye");
     u_fog_ = glGetUniformLocation(program_, "u_fog");
     u_fog_range_ = glGetUniformLocation(program_, "u_fog_range");
+    u_grade_ = glGetUniformLocation(program_, "u_grade");
     u_tint_ = glGetUniformLocation(program_, "u_tint");
     u_inked_ = glGetUniformLocation(program_, "u_inked");
     shadow_prog_ = make_program(kShadowVertex, kShadowFragment, err);
@@ -329,6 +334,7 @@ void MapRenderer::warm(float x, float y) {
 void MapRenderer::build(int cx, int cy, Chunk& out) {
     const auto& m = world_.map();
     const auto& T = m.terrain;
+    const Weather& W = *weather_;
     const float X0 = cx * kChunk, Y0 = cy * kChunk, X1 = X0 + kChunk, Y1 = Y0 + kChunk;
     auto inside = [&](float x, float y) { return x >= X0 && x < X1 && y >= Y0 && y < Y1; };
 
@@ -345,7 +351,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 for (int i = i0; i <= i1; ++i) {
                     const float gx = (T.node(i + 1, j) - T.node(i - 1, j)) / (2 * T.step);
                     const float gy = (T.node(i, j + 1) - T.node(i, j - 1)) / (2 * T.step);
-                    g.add({T.x0 + i * T.step, T.y0 + j * T.step, T.node(i, j)}, normalize({-gx, -gy, 1}), palette::kGrass);
+                    g.add({T.x0 + i * T.step, T.y0 + j * T.step, T.node(i, j)}, normalize({-gx, -gy, 1}), W.snow ? snow::kGround : palette::kGrass);
                 }
             for (int j = 0; j < j1 - j0; ++j)
                 for (int i = 0; i < i1 - i0; ++i) {
@@ -357,7 +363,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
     }
 
     MeshBuilder o, s, ar, sh;
-    const float sdx = 0.45f, sdy = -0.4f;  // game/render3d.py SHADOW_DIR: metres of shadow per metre of height
+    const float sdx = W.shadow_dx, sdy = W.shadow_dy;  // metres of shadow per metre of height (the weather's sun)
     auto shadow_fan = [&](const std::vector<std::pair<float, float>>& poly) {  // a convex polygon on the ground
         if (poly.size() < 3) return;
         std::vector<std::uint32_t> idx;
@@ -375,7 +381,8 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 const float seg = std::hypot(b.x - a.x, b.y - a.y);
                 if (seg < 0.01f) continue;
                 const int n = std::max(1, static_cast<int>(std::ceil(seg / kPiece)));
-                const std::uint8_t* col = rd.gravel ? palette::kGravel : road_colour(rd);
+                const std::uint8_t* gravel = W.snow ? snow::kGravel : palette::kGravel;
+                const std::uint8_t* col = rd.gravel ? gravel : (W.snow && rd.service == kTrack ? gravel : road_colour(rd));
                 float along0 = 0;  // where this segment starts along the road (dashes are spaced along the road)
                 for (int k = 0; k < it.sub; ++k)
                     along0 += std::hypot(rd.points[k + 1].x - rd.points[k].x, rd.points[k + 1].y - rd.points[k].y);
@@ -407,7 +414,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                     if (!inside(mx, my)) continue;
                     // the shoulder or sidewalk beside it (game/render3d.py _draw_road_pieces), under the surface
                     const int sw = !rd.town_sidewalk ? 0 : (m.downtown(mx, my) ? 2 : 1);
-                    const std::uint8_t* edge = (rd.gravel && sw == 0) ? palette::kGravel : palette::kSidewalk[sw];
+                    const std::uint8_t* edge = (rd.gravel && sw == 0) ? gravel : palette::kSidewalk[sw];
                     strip(t0, t1, 0.0f, hw + palette::kSidewalkW[sw], 0.04f, edge, 0.3f, &ar);  // under every road
                     strip(t0, t1, 0.0f, hw, lift, col, 0.3f);
                     // solid paint; offsets are to the right of travel (the mitre is (-dy, dx), y grows south), as Python
@@ -518,7 +525,11 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                     for (const auto& q : p) s.add({q.x, q.y, top}, up, roof);
                     for (const Tri& t : bd.tris) s.tri(first + t.a, first + t.b, first + t.c);
                 } else {
-                    const std::uint8_t roof[3] = {bd.roof_colour.r, bd.roof_colour.g, bd.roof_colour.b};
+                    // snow lies on the roofs that have the style's own slate (those with a colour of their own keep it)
+                    const bool slate = bd.roof_colour.r == 64 && bd.roof_colour.g == 70 && bd.roof_colour.b == 104;
+                    const std::uint8_t roof[3] = {W.snow && slate ? snow::kRoof[0] : bd.roof_colour.r,
+                                                  W.snow && slate ? snow::kRoof[1] : bd.roof_colour.g,
+                                                  W.snow && slate ? snow::kRoof[2] : bd.roof_colour.b};
                     const Vec3 pivot{cxm, cym, top};
                     for (const RoofFace& f : faces) {
                         Vec3 n = normalize(cross(f.v[1] - f.v[0], f.v[2] - f.v[0]));
@@ -572,7 +583,7 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 const bool own = p.colour.r || p.colour.g || p.colour.b;
                 const std::uint8_t mine[3] = {p.colour.r, p.colour.g, p.colour.b};
                 if (kind == "tree") {
-                    tree(s, p.x, p.y, g, p.h, p.r, p.c);
+                    tree(s, p.x, p.y, g, p.h, p.r, p.c, W.snow);
                     const float ox = p.x + sdx * p.h * 0.6f, oy = p.y + sdy * p.h * 0.6f, rr = p.r * 0.9f;
                     std::vector<std::pair<float, float>> oct8;
                     for (int k2 = 0; k2 < 8; ++k2) oct8.push_back({ox + rr * std::cos(k2 * 0.7853982f), oy + rr * std::sin(k2 * 0.7853982f)});
@@ -630,6 +641,8 @@ void MapRenderer::build(int cx, int cy, Chunk& out) {
                 const Poly& P = m.polys[it.index];
                 const Tri t = P.tris[it.sub];
                 std::uint8_t col[3] = {P.colour.r, P.colour.g, P.colour.b};
+                if (W.snow && (P.kind == kPark || P.kind == kLandUse))  // parks and fields under snow
+                    for (int i = 0; i < 3; ++i) col[i] = static_cast<std::uint8_t>(snow::kPark[i] * 0.85f + col[i] * 0.15f);
                 const bool water = P.kind == kWater;
                 const float lift = P.kind == kLot ? 0.05f : (water ? 0.02f : 0.03f);
                 const float level = water_level_[it.index];
@@ -679,8 +692,14 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     glUseProgram(program_);
     glUniformMatrix4fv(u_mvp_, 1, GL_FALSE, vp_.m);
     glUniform3f(u_eye_, cam.eye.x, cam.eye.y, cam.eye.z);
-    glUniform3f(u_fog_, palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f);
-    glUniform2f(u_fog_range_, 70.0f, kDrawDist);
+    const Weather& W = *weather_;
+    glUniform3f(u_fog_, W.fog[0] / 255.0f, W.fog[1] / 255.0f, W.fog[2] / 255.0f);
+    {  // the clear day's fog runs from 70 m to the draw distance; thicker weather brings both in
+        const float k = W.fog_scale / kWeathers[0].fog_scale;
+        const float near = 70.0f / k, far = std::min(kDrawDist, near + (kDrawDist - 70.0f) / k);
+        glUniform2f(u_fog_range_, std::min(near, far - 10.0f), far);
+    }
+    glUniform4f(u_grade_, W.grade[0], W.grade[1], W.grade[2], W.desat);
     const Mat4 identity;
     glUniformMatrix4fv(u_model_, 1, GL_FALSE, identity.m);
     glUniform3f(u_tint_, 1, 1, 1);
@@ -737,8 +756,15 @@ FrameStats MapRenderer::draw(const Camera& cam, float aspect) {
     return stats;
 }
 
+void MapRenderer::set_weather(int k) {
+    if (k < 0 || k >= kWeatherCount || &kWeathers[k] == weather_) return;
+    weather_ = &kWeathers[k];
+    chunks_.clear();  // snow and the sun's angle are built into the chunks: they are made again as they come into view
+    visible_.clear();
+}
+
 void MapRenderer::draw_shadows(const std::vector<float>& tris, const std::uint8_t rgba[4]) {
-    if (!shadow_prog_) return;
+    if (!shadow_prog_ || !weather_->shadows) return;
     glUseProgram(shadow_prog_);
     glUniformMatrix4fv(glGetUniformLocation(shadow_prog_, "u_mvp"), 1, GL_FALSE, vp_.m);
     glUniform4f(glGetUniformLocation(shadow_prog_, "u_rgba"), rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f,

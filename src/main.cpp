@@ -9,6 +9,7 @@
 //   amherst-run --traffic N                      civilian cars around you downtown (default 16, 0 for none)
 //   amherst-run --no-cops | --heat H             no police at all | start with a wanted level (0-4)
 //   amherst-run --no-train | --train-in S        no train | the first train after S seconds (default 50-90)
+//   amherst-run --weather clear|overcast|fog|golden|snow   the weather (F4 changes it while playing)
 //   amherst-run --at X,Y [--heading DEG]         start at this map point (metres), facing a compass bearing
 //   amherst-run --frames 120 --screenshot out.bmp   drive itself for 120 frames, save the picture, report timing
 //                                                   (add --menu to picture the start screen instead)
@@ -22,6 +23,7 @@
 
 #include "game/app.h"
 #include "render/gl.h"
+#include "render/weather.h"
 #include "sim/junctions.h"
 #include "sim/roadgraph.h"
 #include "world/map_file.h"
@@ -80,6 +82,9 @@ bool parse(int argc, char** argv, amr::Options& a, std::string& map) {
             a.heat = std::atof(argv[++i]);
         } else if (!std::strcmp(s, "--traffic") && more) {
             a.traffic = std::atoi(argv[++i]);
+        } else if (!std::strcmp(s, "--weather") && more) {
+            a.weather = amr::weather_index(argv[++i]);
+            if (a.weather < 0) return false;
         } else if (!std::strcmp(s, "--map") && more) {
             map = argv[++i];
         } else if (!std::strcmp(s, "--at") && more) {

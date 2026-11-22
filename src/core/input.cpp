@@ -76,6 +76,7 @@ void Input::handle(const SDL_Event& e) {
                 case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE: acts_.confirm = true; break;
                 case SDLK_ESCAPE: case SDLK_AC_BACK: acts_.back = acts_.pause = true; break;
                 case SDLK_p: acts_.pause = true; break;
+                case SDLK_F4: acts_.weather = true; break;
                 case SDLK_r: acts_.respawn = 0; break;
                 case SDLK_BACKSPACE: acts_.respawn = 1; break;
                 default: break;

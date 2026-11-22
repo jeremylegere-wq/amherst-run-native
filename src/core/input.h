@@ -28,6 +28,7 @@ struct Actions {
     bool pause = false;       // Start / Back / Esc / P
     bool quit = false;        // the window was closed
     int respawn = -1;         // split screen: this player asked for a respawn (Y, or R / Backspace)
+    bool weather = false;     // F4: the next weather preset
 };
 
 class Input {

@@ -8,6 +8,7 @@
 
 #include "core/math.h"
 #include "render/mesh.h"
+#include "render/weather.h"
 #include "world/world.h"
 
 namespace amr {
@@ -49,6 +50,10 @@ public:
     void draw_mesh(const Mesh& mesh, const Mat4& model);
     // Draw the unit box (the placeholder car) with the same lighting and fog; `model` places and sizes it.
     void draw_box(const Mat4& model, const std::uint8_t rgb[3]);
+    // The weather preset (render/weather.h kWeathers): sky colours are the caller's; fog, the colour grade, shadows
+    // and snow are drawn here. Changing it rebuilds the chunks.
+    void set_weather(int k);
+    const Weather& weather() const { return *weather_; }
     static constexpr float kChunk = 200.0f;
     static constexpr float kDrawDist = 260.0f;
     static constexpr int kBuildsPerFrame = 2;  // new chunks built a frame, nearest first (no hitches)
@@ -71,7 +76,8 @@ private:
 
     const World& world_;
     unsigned program_ = 0;
-    int u_mvp_ = -1, u_model_ = -1, u_eye_ = -1, u_fog_ = -1, u_fog_range_ = -1, u_tint_ = -1, u_inked_ = -1;
+    int u_mvp_ = -1, u_model_ = -1, u_eye_ = -1, u_fog_ = -1, u_fog_range_ = -1, u_tint_ = -1, u_inked_ = -1, u_grade_ = -1;
+    const Weather* weather_ = &kWeathers[0];
     Mat4 vp_;
     std::unordered_map<long long, std::unique_ptr<Chunk>> chunks_;
     std::unordered_map<long long, std::vector<Item>> items_;  // what each chunk holds, sorted out at start

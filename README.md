@@ -16,9 +16,10 @@ start screen, a pause screen, split screen for 2-4 players (free roam, no police
 six items; the freight train on the real rail line, and the synthesized sound effects. Phase 4 (the look) has begun:
 the street style's sky, clouds and distant hills, cartoon cars, road paint, kerbs and brick or concrete sidewalks, ink
 outlines, see-through shadows, the landmark props (the border lighthouse, the cenotaph, the dam, the horse), and the
-minimap with the street-name and speed-limit signs.
-Not yet: the cars' real shapes, landmarks,
-the street style's detail. CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.
+minimap with the street-name and speed-limit signs; house details (doors, trimmed windows, porches, attic windows,
+dormers, chimneys) on the five house types, shop fronts and sign bands downtown, window ribbons, arched windows,
+cornices, steeples and the clock tower (the map's BDET chunk); rounder trees; the hand-placed parked cars; and the
+weather presets (`--weather clear|overcast|fog|golden|snow`, F4 while playing). CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.
 
 | Target | Status |
 |---|---|

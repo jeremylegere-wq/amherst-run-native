@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "render/palette.h"
+#include "render/weather.h"
 #include "sim/collision.h"
 
 namespace amr {
@@ -81,6 +82,7 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
     start_y_ = opt.at ? opt.at_y : world.map().spawn_y;
     start_heading_ = opt.has_heading ? opt.heading : world.map().spawn_heading;
     const bool menu = opt.menu || (opt.players == 0 && opt.battle == 0 && opt.frames < 0);
+    renderer_.set_weather(opt_.weather);
     renderer_.warm(static_cast<float>(start_x_), static_cast<float>(start_y_));
     if (menu) mode_ = Mode::Menu;
     else if (opt.battle) start(2, opt.battle);
@@ -231,6 +233,10 @@ int App::run() {
         while (SDL_PollEvent(&e)) input_.handle(e);
         const Actions a = input_.actions();
         if (a.quit) break;
+        if (a.weather) {  // F4: the next weather; the chunks around the first player are made again at once
+            renderer_.set_weather((weather_index(renderer_.weather().name) + 1) % kWeatherCount);
+            if (!cars_.empty()) renderer_.warm(static_cast<float>(cars_[0]->x), static_cast<float>(cars_[0]->y));
+        }
         if (mode_ == Mode::Menu) {
             menu_t_ += 1.0 / 60.0;
             menu_input(a);
@@ -339,19 +345,20 @@ void App::draw_sky(const Camera& cam, int w, int h) {
     const int horizon = static_cast<int>(h / 2.0 - std::tan(pitch) * f);
     sky_.set_size(w, h);
     sky_.begin();
+    const Weather& W = renderer_.weather();
     if (horizon > 0) {
-        const int bands = 16;
+        const int bands = std::min(16, W.sky_bands);
         for (int k = 0; k < bands; ++k) {
             const float t = static_cast<float>(k) / (bands - 1);
             std::uint8_t c[3];
             for (int i = 0; i < 3; ++i)
-                c[i] = static_cast<std::uint8_t>(palette::kSkyTop[i] + (palette::kSkyBottom[i] - palette::kSkyTop[i]) * t);
+                c[i] = static_cast<std::uint8_t>(W.sky_top[i] + (W.sky_bottom[i] - W.sky_top[i]) * t);
             const int y0 = horizon * k / bands, y1 = horizon * (k + 1) / bands;
             sky_.rect(0, y0 - 40 * (k == 0), w, y1 - y0 + 40 * (k == 0), c);
         }
     }
     const double yaw = std::atan2(d.y, d.x), half = std::atan(std::tan(cam.fovy / 2.0) * w / h);
-    for (int k = 0; k < 9; ++k) {  // nine clouds round the sky
+    for (int k = 0; k < W.clouds; ++k) {  // cartoon clouds round the sky (none when it is grey)
         const double bearing = k * 0.698 + 0.31 * (k % 3), up = 0.10 + 0.05 * ((k * 5) % 4);
         const double a = wrap_angle(bearing - yaw);
         if (std::fabs(a) > half + 0.3) continue;
@@ -363,10 +370,11 @@ void App::draw_sky(const Camera& cam, int w, int h) {
     }
     // two ridges of distant hills (game/render3d.py _draw_hills): fixed to compass direction, so they slide as you
     // steer; heights in pixels of the 180-line picture, scaled to this view
-    static const std::uint8_t kHillFar[3] = {126, 176, 226}, kHillNear[3] = {66, 154, 126};
+    const std::uint8_t *kHillFar = W.hill_far, *kHillNear = W.hill_near;
     const double scale = h / 180.0;
     const double ridges[2][6] = {{7, 13, 2.0, 5.0, 0.7, 0}, {2, 9, 3.0, 8.0, 2.1, 1}};
-    for (const auto& rg : ridges) {
+    for (int r = W.hide_horizon ? 2 : 0; r < 2; ++r) {  // two ridges (thick fog hides them)
+        const auto& rg = ridges[r];
         const std::uint8_t* col = rg[5] == 0 ? kHillFar : kHillNear;
         float prev_x = 0, prev_y = 0;
         for (int sx = 0; sx <= w + 8; sx += 8) {
@@ -388,8 +396,10 @@ void App::draw_sky(const Camera& cam, int w, int h) {
 // The street style's see-through hard shadows (game/render3d.py _draw_shadow_layer): the buildings' and trees' are
 // built into the map's chunks (they never move); here, a footprint under each car. One see-through colour.
 void App::draw_shadows(const Camera& cam) {
-    static const std::uint8_t kShadow[4] = {24, 22, 72, 120};
-    const double sdx = 0.45, sdy = -0.4;  // game/render3d.py SHADOW_DIR: metres of shadow per metre of height
+    const Weather& W = renderer_.weather();
+    if (!W.shadows) return;
+    const std::uint8_t* kShadow = W.shadow;
+    const double sdx = W.shadow_dx, sdy = W.shadow_dy;  // metres of shadow per metre of height
     const MapData& m = world_.map();
     const TerrainGrid& T = m.terrain;
     (void)cam;
@@ -439,7 +449,8 @@ void App::draw_view(int i, int x, int y, int w, int h) {
     glViewport(x, kH - y - h, w, h);  // (OpenGL counts rows from the bottom)
     glEnable(GL_SCISSOR_TEST);
     glScissor(x, kH - y - h, w, h);
-    glClearColor(palette::kFog[0] / 255.0f, palette::kFog[1] / 255.0f, palette::kFog[2] / 255.0f, 1);
+    const Weather& W = renderer_.weather();
+    glClearColor(W.fog[0] / 255.0f, W.fog[1] / 255.0f, W.fog[2] / 255.0f, 1);
     glClearStencil(0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     const Camera cam = cams_[i].camera(kFovy);
@@ -483,6 +494,22 @@ void App::draw(int frame) {
         }
         target_.ink(0.5f, MapRenderer::kDrawDist + 40.0f, 140.0f, ink);  // outlines, then the HUD over them
         glViewport(0, 0, kW, kH);
+        if (renderer_.weather().snowfall) {  // falling snow over each view (game/render3d.py _draw_snowfall)
+            const double t = frame / 30.0;
+            for (int i = 0; i < players_; ++i) {
+                int x, y, w, h;
+                view_rect(i, x, y, w, h);
+                const int n = renderer_.weather().snowfall * w * h / (kW * kH);
+                for (int k = 0; k < n; ++k) {
+                    const unsigned hsh = static_cast<unsigned>(k) * 2654435761u;
+                    const double speed = 18.0 + (hsh >> 24) % 24, sway = 2.0 * std::sin(t * 1.3 + k);
+                    const int fx = x + static_cast<int>(std::fmod((hsh & 0xFFFF) % 997 * w / 997.0 + sway + w, w));
+                    const int fy = y + static_cast<int>(std::fmod(((hsh >> 8) & 0xFFF) % h + t * speed, h));
+                    const bool big = k % 4 == 0;
+                    hud_.rect(fx, fy, big ? 2 : 1, big ? 2 : 1, big ? palette::kWhite : palette::kCloudShade);
+                }
+            }
+        }
         if (mode_ == Mode::Single) {
             hud_single();
         } else {

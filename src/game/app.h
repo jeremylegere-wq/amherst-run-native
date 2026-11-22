@@ -41,6 +41,7 @@ struct Options {
     double heat = 0;
     bool trains = true;
     double train_in = -1;       // tests: the first train comes after this many seconds
+    int weather = 0;            // render/weather.h kWeathers (F4 cycles them)
 };
 
 class App {
