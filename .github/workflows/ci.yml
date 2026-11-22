@@ -134,9 +134,9 @@ jobs:
           $root = (Get-Location).Path
           $sdl = "$root\SDL2-$env:SDL_VERSION"
           cmake -S platform/uwp -B build-uwp -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0 `
-            -DSDL_DIR="$sdl" -DSDL_LIB_DIR="$sdl\VisualC-WinRT\x64\Release\SDL-UWP" `
-            -DANGLE_DIR="$root\angle" -DMAP_FILE="$root\assets\amherst.amr" -DAMR_VERSION="0.1.0-xbox-${{ github.run_number }}"
+            "-DCMAKE_SYSTEM_NAME=WindowsStore" "-DCMAKE_SYSTEM_VERSION=10.0" `
+            "-DSDL_DIR=$sdl" "-DSDL_LIB_DIR=$sdl/VisualC-WinRT/x64/Release/SDL-UWP" `
+            "-DANGLE_DIR=$root/angle" "-DMAP_FILE=$root/assets/amherst.amr" "-DAMR_VERSION=0.1.0-xbox-${{ github.run_number }}"
           if ($LASTEXITCODE -ne 0) { throw "configure failed" }
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
