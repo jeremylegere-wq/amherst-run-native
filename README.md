@@ -29,12 +29,12 @@ breakbeat in E minor with bass, electric-piano stabs and a chiptune hook, and a 
 (MUSIC in the pause menu, `--no-music`). Progress is saved (cash, tags, weather, quality, music) in the system's app-data folder;
 `--no-save` plays without it. Phase 5 (phones): on-screen touch
 buttons (they appear at the first touch; `--touch` shows them on a desktop, worked by the mouse), taps in the menus,
-Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; neither has been tried on the real device yet.
+Back pauses, pausing when the app goes to the background, and a quality setting (pause menu or `--quality low`). CI builds the Xbox package and the Android APK; the Xbox package runs on a dev kit, the APK is not yet tried on a phone.
 
 | Target | Status |
 |---|---|
 | Linux (desktop, Batocera) | builds and runs |
-| Xbox One, Developer Mode (UWP) | CI builds a signed test package (artifact `amherst-run-xbox-uwp`); not yet tried on a console (see `platform/uwp/README.md`) |
+| Xbox One, Developer Mode (UWP) | runs on a dev kit (package 0.1.41.0, 23 Nov 2026); CI builds a signed test package (artifact `amherst-run-xbox-uwp`, guide in `platform/uwp/INSTALL.txt`) |
 | Android | CI builds a debug APK (artifact `amherst-run-android-debug`); not yet tried on a device (see `platform/android/README.md`) |
 | Windows, macOS desktop | should build with CMake; not tried yet |
 

@@ -9,7 +9,7 @@ Direct3D 11), signs it with a test certificate made fresh for each build, and ke
     AmherstRun_0.1.0.0_x64_Test/AmherstRun_0.1.0.0_x64.cer        its test certificate
     AmherstRun_0.1.0.0_x64_Test/Dependencies/x64/Microsoft.VCLibs.x64.14.00.appx   the C++ runtime it needs
 
-Not yet tried on a console. `INSTALL.txt` (copied into the artifact) is the step-by-step guide: Developer Mode,
+Runs on a dev kit (package 0.1.41.0, 23 Nov 2026). `INSTALL.txt` (copied into the artifact) is the step-by-step guide: Developer Mode,
 installing through the Device Portal, setting the app type to Game, the controls, and where the log is.
 
 Made for the console:
