@@ -18,7 +18,7 @@ foreach(v SDL_DIR SDL_LIB_DIR ANGLE_DIR MAP_FILE)
   endif()
   file(TO_CMAKE_PATH "${${v}}" ${v})   # forward slashes (Windows paths break CMake's source properties)
 endforeach()
-set(AMR_VERSION "0.1.1-xbox" CACHE STRING "version shown by the game")
+set(AMR_VERSION "0.1.2-xbox" CACHE STRING "version shown by the game")
 # the package's version: CI gives each build a higher one (0.1.<run>.0) so a new build installs over the last
 set(AMR_PKG_VERSION "0.1.0.0" CACHE STRING "package version (four numbers)")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Package.appxmanifest.in ${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest @ONLY)

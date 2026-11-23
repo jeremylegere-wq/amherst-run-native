@@ -5,6 +5,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-23
+
+Still an **untested preview** on the Xbox and Android.
+
 ### Added
 - Controller rumble: crashes (by how hard), boosts, drift charge, spraying and finished walls, BUSTED and WRECKED,
   the train. *Pause > Rumble* switches it off; the choice is saved.
@@ -42,6 +46,7 @@ The first public build, an **untested preview**: the Xbox and Android builds hav
 - Saved progress, touch controls, a quality setting, a TV-safe screen fit, and a log on the device.
 - An Android APK and a signed Xbox (UWP) package, built in CI.
 
-[Unreleased]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jeremylegere-wq/amherst-run-native/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jeremylegere-wq/amherst-run-native/releases/tag/v0.1.0
