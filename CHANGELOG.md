@@ -5,6 +5,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Controller rumble: crashes (by how hard), boosts, drift charge, spraying and finished walls, BUSTED and WRECKED,
+  the train. *Pause > Rumble* switches it off; the choice is saved.
+- Prompts name the device you use last ("HOLD X TO TAG" on a controller, "HOLD E TO TAG" on a keyboard, the TAG
+  button by touch); the start screen tells touch players to tap.
+- The game pauses when a controller disconnects mid-game.
+- Android: USB and Bluetooth controllers declared as optional hardware, low-latency display on TVs, and the tilt
+  sensor is no longer exposed as a joystick.
+
 ## [0.1.1] - 2026-11-23
 
 Still an **untested preview** on the Xbox and Android.

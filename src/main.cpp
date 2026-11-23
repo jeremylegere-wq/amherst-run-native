@@ -150,6 +150,7 @@ int main(int argc, char** argv) {
 #endif
 #ifdef __ANDROID__
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");  // the phone's Back pauses (like Esc) instead of closing
+    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");  // the tilt sensor is not a controller
 #endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {  // (audio starts later, if it can)
         amr::fatal(std::string("SDL could not start: ") + SDL_GetError());

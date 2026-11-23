@@ -113,3 +113,7 @@ add_test(NAME save COMMAND test_save "${CMAKE_CURRENT_BINARY_DIR}")
 add_executable(test_music tests/test_music.cpp)
 target_link_libraries(test_music PRIVATE amr_core)
 add_test(NAME music COMMAND test_music)
+
+add_executable(test_input tests/test_input.cpp)
+target_link_libraries(test_input PRIVATE amr_core)
+add_test(NAME input COMMAND test_input)

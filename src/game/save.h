@@ -17,6 +17,7 @@ struct SaveData {
     int weather = 0;
     bool low_quality = false;
     bool music = true;
+    bool rumble = true;
     int screen = -1;    // the screen fit: 0 full, 1 TV-safe border (-1: not chosen yet)
 };
 

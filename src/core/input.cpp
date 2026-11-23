@@ -45,6 +45,13 @@ int Input::pad_player(SDL_JoystickID id, int players) const {
 void Input::handle(const SDL_Event& e) {
     touch_.handle(e, win_w_, win_h_);
     if (e.type == SDL_CONTROLLERBUTTONDOWN || e.type == SDL_KEYDOWN) touch_.hide();  // a pad or keys: no buttons
+    if (e.type == SDL_CONTROLLERBUTTONDOWN ||
+        (e.type == SDL_CONTROLLERAXISMOTION && (e.caxis.value > 16000 || e.caxis.value < -16000)))
+        last_ = Device::Pad;
+    else if (e.type == SDL_KEYDOWN && e.key.keysym.sym != SDLK_AC_BACK)
+        last_ = Device::Keyboard;
+    else if (e.type == SDL_FINGERDOWN)
+        last_ = Device::Touch;
     switch (e.type) {
         case SDL_QUIT: acts_.quit = true; break;
         case SDL_APP_WILLENTERBACKGROUND: acts_.background = true; break;
@@ -52,8 +59,13 @@ void Input::handle(const SDL_Event& e) {
         case SDL_CONTROLLERDEVICEADDED: open(e.cdevice.which); break;
         case SDL_CONTROLLERDEVICEREMOVED: {
             SDL_GameController* gone = SDL_GameControllerFromInstanceID(e.cdevice.which);
+            const auto before = pads_.size();
             pads_.erase(std::remove(pads_.begin(), pads_.end(), gone), pads_.end());
             if (gone) SDL_GameControllerClose(gone);
+            if (pads_.size() < before) {
+                acts_.pad_lost = true;
+                log_info("a pad went away (%zu left)", pads_.size());
+            }
             break;
         }
         case SDL_CONTROLLERBUTTONDOWN:
@@ -93,6 +105,17 @@ void Input::handle(const SDL_Event& e) {
             }
             break;
         default: break;
+    }
+}
+
+void Input::rumble(int i, const Rumble& r) {
+    if (!rumble_on_ || !r.any()) return;
+    const int players = std::max(players_, 1), npads = static_cast<int>(pads_.size());
+    const int kpads = std::min(npads, players), first = players - kpads;
+    for (int p = 0; p < npads; ++p) {
+        if (players > 1 && p != i - first) continue;  // split screen: this player's own pad (as controls())
+        SDL_GameControllerRumble(pads_[p], static_cast<Uint16>(r.low * 65535), static_cast<Uint16>(r.high * 65535),
+                                 static_cast<Uint32>(r.ms));
     }
 }
 

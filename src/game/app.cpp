@@ -49,9 +49,9 @@ void rainbow(double h, std::uint8_t out[3]) {
     out[0] = c[i][0]; out[1] = c[i][1]; out[2] = c[i][2];
 }
 constexpr int kMenuCount = sizeof(kMenu) / sizeof(kMenu[0]);
-const char* kPause[] = {"RESUME", "MUSIC", "QUALITY", "SCREEN", "MAIN MENU", "QUIT"};
+const char* kPause[] = {"RESUME", "MUSIC", "RUMBLE", "QUALITY", "SCREEN", "MAIN MENU", "QUIT"};
 constexpr int kPauseCount = sizeof(kPause) / sizeof(kPause[0]);
-constexpr int kPauseW = 140, kPauseH = 133;  // the pause box
+constexpr int kPauseW = 140, kPauseH = 150;  // the pause box
 constexpr float kSafeMargin = 0.05f;         // the TV-safe border on each side
 
 // Screen rectangles (x, y, w, h) of the players in the 320x180 picture (game/twoplayer.py layout).
@@ -121,6 +121,7 @@ App::App(SDL_Window* window, World& world, RoadGraph& graph, Junctions& junction
     renderer_.set_weather(opt_.weather);
     renderer_.set_low_quality(opt_.low_quality);
     sound_.set_music(!opt_.no_music && (!loaded_ || save_.music));
+    input_.set_rumble(!loaded_ || save_.rumble);
 #ifdef __WINRT__
     safe_screen_ = true;  // a console on a TV: keep the HUD inside the title-safe area until the player says otherwise
 #endif
@@ -233,14 +234,18 @@ void App::pause_input(const Actions& a) {
             sound_.set_music(!sound_.music_on());
             write_save_now();
         } else if (pause_index_ == 2) {
-            renderer_.set_low_quality(!renderer_.low_quality());
+            input_.set_rumble(!input_.rumble_on());
+            input_.rumble(0, Rumble{0.5f, 0.5f, 200});  // (switched on: a nudge to show it works)
             write_save_now();
         } else if (pause_index_ == 3) {
+            renderer_.set_low_quality(!renderer_.low_quality());
+            write_save_now();
+        } else if (pause_index_ == 4) {
             safe_screen_ = !safe_screen_;
             input_.touch().set_margin(safe_screen_ ? kSafeMargin : 0.0f);
             write_save_now();
         }
-        else if (pause_index_ == 4) { paused_ = false; mode_ = Mode::Menu; }
+        else if (pause_index_ == 5) { paused_ = false; mode_ = Mode::Menu; }
         else quit_ = true;
     }
 }
@@ -263,15 +268,35 @@ void App::step(double dt) {
         car.update(dt, drive, world_.on_road(car.x, car.y));
         const double impact = move_and_slide(car, world_, px, py, true);
         settle_height(car, world_, dt);
+        const double damage_before = town_->damage();
+        const TownState state_before = town_->state();
         if (i == 0) {
             town_->update(dt, car, players_ == 1 ? impact : 0.0);
         }
+        // the pad shakes: walls and trees by the speed lost, traffic by the damage it did, boosts and drift charge
+        Rumble shake = crash_rumble(impact);
+        if (i == 0 && players_ == 1) {
+            const double hurt = town_->damage() - damage_before;  // (1 damage ~ a 0.5 m/s hit: see Town::hurt)
+            if (hurt > 0.5) {
+                const Rumble r = crash_rumble(3.0 + hurt * 2.0);
+                if (r.low > shake.low) shake = r;
+            }
+            if (state_before == TownState::Playing && town_->state() != TownState::Playing) shake = rumble::kBusted;
+        }
+        if (rumble_.size() < static_cast<std::size_t>(players_)) rumble_.resize(players_);
+        RumbleState& rs = rumble_[i];
+        if (car.boost_t > 0 && rs.boost_t <= 0 && !shake.any()) shake = rumble::kBoost;
+        if (car.charge_level() > rs.charge && car.charge_level() > 0 && !shake.any()) shake = rumble::charge(car.charge_level());
+        rs.boost_t = car.boost_t;
+        rs.charge = car.charge_level();
+        if (shake.any()) input_.rumble(i, shake);
         if (i == 0 && tagging_ && town_->state() == TownState::Playing) {
             const double before = tagging_->progress();
             const TagEvent ev = tagging_->update(dt, car, tag);
             spray_sound_t_ -= dt;
-            if (tagging_->progress() > before && spray_sound_t_ <= 0) {  // the can hisses while it sprays
+            if (tagging_->progress() > before && spray_sound_t_ <= 0) {  // the can hisses (and buzzes) while it sprays
                 sound_.play("spray");
+                input_.rumble(0, rumble::kSpray);
                 spray_sound_t_ = 0.28;
             }
             if (ev.kind == TagEvent::Pass) {  // a piece grows
@@ -283,6 +308,7 @@ void App::step(double dt) {
                 const TagSpot& sp = tagging_->spots()[ev.spot];
                 refresh_tag(ev.spot);
                 sound_.play("tagged");
+                input_.rumble(0, rumble::kTagged);
                 bool seen = false;  // police close by see it happen
                 for (const auto& o : town_->cars())
                     if (o->police && std::hypot(o->x - car.x, o->y - car.y) < 80.0) seen = true;
@@ -315,6 +341,7 @@ void App::step(double dt) {
         for (int i = 0; i < players_; ++i) {
             const double hit = train_->push_out(*cars_[i]);
             if (players_ == 1 && hit > 3.0) town_->hit_player(hit);
+            if (hit > 3.0) input_.rumble(i, rumble::kTrain);
         }
         for (const auto& c : town_->cars()) train_->push_out(*c);
     }
@@ -354,6 +381,10 @@ int App::run() {
             if (mode_ != Mode::Menu && !paused_) { paused_ = true; pause_index_ = 0; }
         }
         if (a.foreground) sound_.pause(false);
+        if (a.pad_lost && mode_ != Mode::Menu && !paused_) {  // a controller dropped out mid-game: wait for it
+            paused_ = true;
+            pause_index_ = 0;
+        }
         for (const auto& t : input_.taps()) {  // touch: a tap on a menu or pause item picks it
             if (mode_ == Mode::Menu) {
                 for (int i = 0; i < kMenuCount; ++i)
@@ -807,7 +838,9 @@ void App::hud_single() {
                 hud_.text((kW - hud_.text_width("SPRAYING", 2)) / 2, by - 14, "SPRAYING", kYellow, 2);
             } else {
                 const TagSpot& sp = tagging_->spots()[tagging_->in_reach()];
-                const std::string msg = touch ? "HOLD TAG TO SPRAY" : "HOLD E OR X TO TAG";
+                const Device dev = input_.last_device();
+                const std::string msg = touch || dev == Device::Touch ? "HOLD TAG TO SPRAY"
+                                      : dev == Device::Pad ? "HOLD X TO TAG" : "HOLD E TO TAG";
                 const std::string sub = sp.piece ? "BIG PIECE: " + std::to_string(Tagging::kPieceSprays - sp.passes) + " SPRAYS LEFT  $" +
                                                        std::to_string(Tagging::kPiecePay)
                                       : sp.owner == Crew::Rival ? "RIVAL TAG: COVER IT FOR $" + std::to_string(Tagging::kCoverPay) : "";
@@ -997,6 +1030,8 @@ void App::draw_menu() {
     const int n = input_.pads();
     const std::string pads = n >= 2 ? std::to_string(n) + " gamepads found. LB/RB = hop + drift boost"
                            : n == 1 ? "1 gamepad found: it drives the LAST player (keyboard: WASD + arrows)"
+                           : input_.last_device() == Device::Touch || input_.touch().shown()
+                                    ? "Tap a mode. A Bluetooth or USB gamepad works too"
                                     : "No gamepad: P1 WASD+Shift, P2 arrows+RShift";
     hud_.text((kW - hud_.text_width(pads)) / 2, 156, pads, kDim);
     const std::string credit = "Map data (c) OpenStreetMap contributors";
@@ -1014,8 +1049,9 @@ void App::draw_pause() {
         hud_.rect(rx, ry, rw, rh, sel ? kOrange : kPanel);
         if (!sel) hud_.rect(rx, ry + rh - 1, rw, 1, kPanelEdge);
         const std::string label = i == 1 ? (sound_.music_on() ? "MUSIC: ON" : "MUSIC: OFF")
-                                : i == 2 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH")
-                                : i == 3 ? (safe_screen_ ? "SCREEN: SAFE" : "SCREEN: FULL") : kPause[i];
+                                : i == 2 ? (input_.rumble_on() ? "RUMBLE: ON" : "RUMBLE: OFF")
+                                : i == 3 ? (renderer_.low_quality() ? "QUALITY: LOW" : "QUALITY: HIGH")
+                                : i == 4 ? (safe_screen_ ? "SCREEN: SAFE" : "SCREEN: FULL") : kPause[i];
         hud_.text(rx + (rw - hud_.text_width(label, 2)) / 2, ry + 2, label, sel ? kInk : kDim, 2, !sel);
     }
 }
@@ -1163,6 +1199,7 @@ void App::write_save_now() {
     save_.weather = weather_index(renderer_.weather().name);
     save_.low_quality = renderer_.low_quality();
     save_.music = sound_.music_on();
+    save_.rumble = input_.rumble_on();
     save_.screen = safe_screen_ ? 1 : 0;
     if (write_save(save_path_, save_)) loaded_ = true;
     else log_error("could not write the save (%s)", save_path_.c_str());

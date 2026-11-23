@@ -101,7 +101,8 @@ Each release has a `SHA256SUMS.txt`. The newest builds of `main` are also attach
 | Pause | Menu or View | Esc / P | PAUSE |
 | Menus | D-pad, A, B | Arrows, Enter, Esc | Tap an item |
 
-The pause menu switches the **music**, the **quality** (low: shorter view and no see-through shadows, for slower
+Controllers rumble on crashes, boosts, drifts, tagging and arrests. The pause menu switches the **music**, the
+**rumble**, the **quality** (low: shorter view and no see-through shadows, for slower
 hardware) and the **screen fit** (safe: a border for TVs that crop their edges, the Xbox default). F4 changes the weather.
 Split screen and battle keys, and every command-line option, are in [docs/COMMAND_LINE.md](docs/COMMAND_LINE.md).
 

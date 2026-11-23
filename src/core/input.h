@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/rumble.h"
 #include "core/touch.h"
 
 namespace amr {
@@ -33,9 +34,13 @@ struct Actions {
     bool quit = false;        // the window was closed
     int respawn = -1;         // split screen: this player asked for a respawn (Y, or R / Backspace)
     bool weather = false;     // F4: the next weather preset
+    bool pad_lost = false;    // a controller was unplugged or switched off (the game pauses)
     bool background = false;  // the app went to the background (a phone): pause, and stop the sound
     bool foreground = false;  // ... and came back
 };
+
+// What the player used last, so on-screen prompts name the right button.
+enum class Device { Keyboard, Pad, Touch };
 
 class Input {
 public:
@@ -59,6 +64,12 @@ public:
     Touch& touch() { return touch_; }
     const Touch& touch() const { return touch_; }
     std::vector<std::pair<int, int>> taps() { return touch_.taps(); }  // menus: where fingers came down
+    Device last_device() const { return last_; }
+    // Shake player i's pad (in split screen its own pad; one player: every pad). Nothing when rumble is off or the
+    // pad has no motors.
+    void rumble(int i, const Rumble& r);
+    void set_rumble(bool on) { rumble_on_ = on; }
+    bool rumble_on() const { return rumble_on_; }
 
 private:
     void open(int device_index);
@@ -68,6 +79,8 @@ private:
     bool stick_held_ = false;   // menu: the stick has to come back before it moves again
     int players_ = 1;
     Touch touch_;
+    Device last_ = Device::Keyboard;
+    bool rumble_on_ = true;
     int win_w_ = 960, win_h_ = 540;
 };
 

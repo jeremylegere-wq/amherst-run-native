@@ -122,6 +122,11 @@ private:
     std::unique_ptr<Tagging> tagging_;                 // the full game's tag spots (game/tagging.h)
     std::vector<std::unique_ptr<Mesh>> tag_meshes_;    // the player's tags, per spot, once sprayed
     double spray_sound_t_ = 0;
+    struct RumbleState {  // what each player's car was doing last step (rumble on a change)
+        double boost_t = 0;
+        int charge = 0;
+    };
+    std::vector<RumbleState> rumble_;
     std::unique_ptr<AICar> pilot_;  // --autopilot: a traffic driver that steers player 1
     std::mt19937 pilot_rng_{7};
     CarInput autopilot(Car& car, double dt);
